@@ -1,6 +1,18 @@
 # SmartGate — demo dua model untuk tugas IoT
 
-SmartGate sedang dikembangkan menjadi prototipe gerbang pintar. **Versi di repo ini baru mengamati kamera dan suara, belum membuka/menutup gerbang.**
+SmartGate sedang dikembangkan menjadi prototipe gerbang pintar. **Demo utama mengamati kamera dan suara; sekarang tersedia juga demo meja SG90 terpisah: wajah + kedua mata terbuka terus 5 detik memicu satu gerakan.** Ini bukan pengenal identitas atau sistem gerbang aman.
+
+## Baru: demo servo SG90 sederhana
+
+Lihat **[panduan cepat servo](docs/DEMO_SERVO_CEPAT.md)**. Firmware servo terpisah dari firmware audio; menguploadnya mengganti aplikasi yang berjalan pada ESP, bukan menghapus kode lama. **Tes software, dua kompilasi, serta review statis pada lingkup yang diperiksa lulus. Uji meja fisik dilakukan pengguna setelah pemeriksaan catu/wiring; mulai dari simulasi dahulu.**
+
+```bat
+.venv\Scripts\python.exe run_servo_demo.py
+```
+
+Perintah di atas menjalankan **simulasi kamera tanpa perintah servo**, dashboard **http://127.0.0.1:5001**. Mode fisik memakai flag eksplisit `--enable-servo --esp-ip <IPv4-ESP>` setelah wiring/catu diperiksa. Gunakan SG90 tanpa horn/palang, SIGNAL GPIO42, catu eksternal sesuai rating dan common GND. ARM menargetkan 90°, syarat 5 detik menargetkan 110° sekali; tidak ada tutup otomatis. Ikuti panduan dahulu, jangan langsung menghubungkan palang.
+
+Bagian berikut menjelaskan **demo utama kamera + audio**, bukan demo servo terpisah.
 
 Ada dua jalur pengolahan:
 - **Kamera laptop:** MediaPipe mendeteksi titik wajah. Rumus EAR membaca bukaan mata, lalu aturan waktu menghitung kedipan.
@@ -10,13 +22,27 @@ Hasil keduanya tampil di dashboard dan dikirim kembali ke ESP untuk dicetak di A
 
 > **Penting untuk presentasi:** kedipan bukan pengenal identitas. Model sirene masih dilatih dari data sintetis. Kelulusan tes software belum membuktikan akurasi suara nyata atau kestabilan board setelah perbaikan terbaru.
 
+## Protokol komunikasi: MQTT atau HTTP?
+
+**ESP32-S3 ↔ laptop memakai UDP melalui Wi-Fi. Browser ↔ server Python memakai HTTP. MQTT tidak digunakan pada implementasi saat ini.**
+
+| Jalur | Protokol dan port default | Data |
+|---|---|---|
+| ESP32-S3 → laptop, demo audio | UDP → laptop `5006`; port ESP `5007` | Sampel audio biner `SGA1` |
+| Laptop → ESP32-S3, demo audio | UDP → ESP `5007` | Ringkasan hasil teks `SGR1` untuk Serial Monitor |
+| Laptop ↔ ESP32-S3, demo servo terpisah | UDP; ESP `5009`, laptop `5010` | ARM/OPEN/DISARM/KEEPALIVE, beacon dan ACK |
+| Browser ↔ Python, dashboard utama | HTTP/TCP `127.0.0.1:5000` | Halaman, status JSON dan video |
+| Browser ↔ Python, dashboard servo | HTTP/TCP `127.0.0.1:5001` | Halaman, status JSON dan video |
+
+Wi-Fi adalah media jaringan, bukan pengganti nama protokol. ESP tidak mengirim audio atau perintah servo melalui HTTP; HTTP hanya melayani dashboard lokal. Tidak ada broker, topic atau publish/subscribe MQTT. Detail alur, format paket dan batasnya: **[Protokol komunikasi](docs/PROTOKOL_KOMUNIKASI.md)**.
+
 ## Baca yang mana dulu?
 
 | Kebutuhan | Dokumen |
 |---|---|
 | Ringkasan untuk bertemu dosen | [Progres dan bahan penjelasan](docs/PROGRES_DOSEN.md) |
 | Teman baru mulai memahami proyek | [Panduan teman](docs/PANDUAN_TEMAN.md) |
-| Memahami alur kode dan komunikasi | [Arsitektur](docs/ARSITEKTUR.md) |
+| Memahami alur kode dan komunikasi | [Arsitektur](docs/ARSITEKTUR.md) dan [protokol UDP/HTTP](docs/PROTOKOL_KOMUNIKASI.md) |
 | Melakukan demo pada perangkat | [Urutan uji fisik](docs/UJI_FISIK.md) |
 | Memahami model dan arti metriknya | [Model dan data](docs/MODEL_DAN_DATA.md) |
 | Menjalankan tes tanpa perangkat | [Pengujian software](docs/PENGUJIAN.md) |
@@ -160,7 +186,7 @@ SmartGate/
 
 - Tidak ada rekaman foto/video/audio otomatis. `--report` pada launcher hanya menyimpan status/metrik bila diminta.
 - Dashboard HTTP hanya di laptop (`127.0.0.1`). UDP LAN **belum memakai autentikasi/enkripsi**; gunakan jaringan privat, jangan port-forward ke Internet.
-- `authorized` tetap **false** dan tidak ada perintah pembuka gerbang pada demo ini.
+- `authorized` tetap **false**. Demo utama kamera+audio tidak mengirim perintah gerak; demo SG90 terpisah hanya mengirim perintah bila flag hardware diaktifkan eksplisit.
 - File `.pkl` memakai deserialisasi joblib: **hanya muat model dari sumber proyek yang dipercaya**, jangan model acak.
 - `.gitignore` tidak dapat menghapus password dari `.ino` yang sudah dilacak Git. Karena itu, isi konfigurasi **di salinan luar repo**, bukan pada file publik.
 - Gambar/video pribadi, data mikrofon mentah, konfigurasi lokal, cache, binary dan log internal tidak disertakan.

@@ -1,5 +1,7 @@
 # Arsitektur dan alur kode
 
+**Komunikasi saat ini: UDP melalui Wi-Fi untuk ESP–laptop, HTTP untuk browser–Python; bukan MQTT.** Lihat [tabel port dan kontrak komunikasi](PROTOKOL_KOMUNIKASI.md). Bagian audio di bawah tetap terpisah dari demo servo.
+
 ## Pembagian tugas perangkat
 
 | Komponen | Tugas |
@@ -71,6 +73,16 @@ Teks ASCII berawalan `SGR1 `, ukuran dibatasi, dikirim maksimal sekitar4 kali/de
 
 **Batas protokol:** ringkasan `SGR1` belum membawa boot/sequence/timestamp. Paket yang lama tertunda di jaringan tidak dapat dibuktikan generasinya secara menyeluruh, walaupun regresi hasil lokal basi saat recovery/reconnect sudah diuji. Ini salah satu alasan demo dibatasi ke LAN tepercaya dan belum dipakai menggerakkan gerbang.
 
+## Demo meja servo terpisah
+
+`run_servo_demo.py` memakai kamera laptop, MediaPipe/EAR dan aturan kedua mata terbuka 5 detik. Mode default hanya simulasi; UDP kontrol baru dibuat jika `--enable-servo --esp-ip <IPv4-ESP>` diberikan. Browser tidak menghitung waktu dan tidak mempunyai endpoint gerak.
+
+Pada mode perangkat, `ServoLink` Python mengirim UDP dari port laptop `5010` ke ESP `5009`. Sketch `demo_servo_esp32s3.ino` mengirim beacon dan ACK dari ESP `5009` ke laptop `5010`. Paket biner 16 byte membawa boot ID, nonce dan action/state. Pemeriksaan paket dan watchdog bukan autentikasi, jaminan pengiriman, atau pembacaan posisi servo.
+
+ARM menargetkan 90°, lalu satu OPEN menargetkan 110° setelah syarat kamera. Tidak ada tutup otomatis atau retry OPEN otomatis. Detail keselamatan dan urutan uji pengguna: [Demo servo cepat](DEMO_SERVO_CEPAT.md).
+
+Sketch servo **menggantikan aplikasi audio yang terpasang** jika diupload ke board yang sama; keduanya belum diintegrasikan. Kode audio tetap tersedia.
+
 ## API dan port
 
 | Tujuan | Alamat/port |
@@ -80,6 +92,8 @@ Teks ASCII berawalan `SGR1 `, ukuran dibatasi, dikirim maksimal sekitar4 kali/de
 | Kesehatan proses | `GET /health` |
 | Audio UDP laptop | `0.0.0.0:5006` pada LAN |
 | Audio/ringkasan UDP ESP | `5007` |
+| Dashboard servo HTTP | `127.0.0.1:5001`, GET `/`, `/api/state`, `/video_feed` |
+| Kontrol/beacon/ACK servo UDP | ESP `5009`, laptop `5010` (hanya mode perangkat) |
 
 Pabrik aplikasi Flask tidak otomatis menyalakan kamera, model atau jaringan. Launcher yang memulai worker secara eksplisit. Endpoint kontrol gerbang tidak tersedia; `POST /api/command` mengembalikan 404.
 

@@ -2,15 +2,31 @@
 
 **Posisi saat publikasi awal, 16 November 2026:** prototipe pengamatan dua model. Belum sistem gerbang otomatis dan belum validasi lapangan.
 
+## Tambahan: demo aktuator meja SG90
+
+Fitur baru dibuat **terpisah dari aplikasi audio**: wajah dan kedua mata terbuka terus5detik memicu satu event gerak SG90. Kedipan/wajah hilang mereset hitungan. Mode default hanya simulasi; gerak nyata perlu flag eksplisit, GPIO42, catu eksternal sesuai rating dan commonGND. ARM menargetkan90°, OPEN menargetkan110° sekali; tidak ada tutup otomatis.
+
+Ini **bukan integrasi gerbang lengkap**, bukan identitas/izin masuk, dan belum validasi gerak fisik. Upload sketch servo sementara mengganti aplikasi audio di board; kode audio tetap utuh. Panduan serta bukti uji terbaru: [Demo servo cepat](DEMO_SERVO_CEPAT.md).
+
+Bukti tambahan servo: **65 tes Python** (21 khusus servo), **42 tes backend lama**, **18 kasus fake-HAL/protokol/kontrak**, serta **2 kompilasi Arduino ESP32-S3** lulus. Ada peringatan API UDP deprecated dan pesan teardown Playwright lama; keduanya dicatat di panduan. **Review statis pada lingkup firmware dan koreksi kamera lulus tanpa temuan penghambat tersisa; hash/bukti eksekusi direkonsiliasi implementer, bukan audit eksekusi independen. Belum ada upload atau uji gerak servo fisik oleh agent.** Angka ini bukan hasil uji servo nyata.
+
+Bagian berikut mempertahankan laporan demo utama kamera+audio; status software tidak boleh dianggap uji fisik servo.
+
 ## Ringkasan yang bisa disampaikan
 
 > “Kami sudah membuat dua jalur pengolahan. Kamera laptop diproses dengan MediaPipe dan EAR untuk membaca kondisi mata serta kedipan. Suara dari MAX9814 di ESP32-S3 dikirim lewat Wi-Fi ke laptop, lalu diklasifikasikan oleh Random Forest menjadi sirene atau non-sirene. Hasilnya ditampilkan di dashboard dan dikirim balik ke Serial Monitor ESP. Integrasi software dan kompilasi firmware sudah diuji. Sekarang fokus kami memastikan board stabil setelah perbaikan ADC, menguji audio nyata, dan mengevaluasi model sebelum menghubungkan aktuator gerbang.”
+
+## Protokol yang dipakai
+
+> “Komunikasi ESP32-S3 dengan laptop menggunakan UDP melalui Wi-Fi. Dashboard browser menggunakan HTTP pada server Python lokal. Implementasi ini tidak memakai MQTT atau broker.”
+
+Audio masuk ke UDP laptop `5006`, ringkasan kembali ke UDP ESP `5007`. Demo servo terpisah memakai UDP ESP `5009` dan laptop `5010`. HTTP dashboard utama di `5000`, servo di `5001`. Port adalah nilai default aplikasi, bukan hasil pengukuran perangkat. Lihat [detail komunikasi](PROTOKOL_KOMUNIKASI.md).
 
 ## Target besar vs hasil sekarang
 
 **Target besar:** sistem gerbang pintar berbasis masukan vision dan suara, dengan kontrol serta pengaman fisik.
 
-**Tahap sekarang:** membuktikan akuisisi data, pengolahan dua jalur, pengiriman hasil dan tampilan monitoring. Servo/gerbang, HC-SR04, LCD dan MQTT belum menjadi bagian demo yang berjalan. Sensor jarak yang disepakati untuk pengembangan berikutnya adalah HC-SR04; tidak ada klaim interlock anti-jepit telah selesai.
+**Tahap demo utama kamera+audio:** membuktikan akuisisi data, pengolahan dua jalur, pengiriman hasil dan tampilan monitoring. Servo belum terintegrasi dengan audio; demo meja SG90 dibuat terpisah sebagaimana bagian tambahan di atas. Gerbang lengkap, HC-SR04, LCD dan MQTT belum menjadi bagian demo utama. Sensor jarak yang disepakati untuk pengembangan berikutnya adalah HC-SR04; tidak ada klaim interlock anti-jepit telah selesai.
 
 ## Yang sudah dibuat dan bukti yang tersedia
 
