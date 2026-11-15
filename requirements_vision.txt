@@ -1,0 +1,5 @@
+# Tested on the existing Python 3.11 environment.
+# No audio, MQTT, or identity-recognition dependencies.
+numpy==2.4.6
+opencv-python==5.0.0.93
+mediapipe==1.2.3

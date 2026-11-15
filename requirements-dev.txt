@@ -1,0 +1,3 @@
+-r requirements.txt
+# Opsional: tes browser memerlukan Google Chrome pada Windows.
+playwright==1.58.0

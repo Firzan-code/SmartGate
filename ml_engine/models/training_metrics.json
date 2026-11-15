@@ -1,0 +1,76 @@
+{
+  "model_type": "RandomForestClassifier",
+  "hyperparameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "random_state": 42
+  },
+  "signal_config": {
+    "sample_rate_hz": 16000,
+    "duration_sec": 1.0,
+    "n_fft": 1024,
+    "hop_length": 512,
+    "window": "hann",
+    "n_features": 30,
+    "siren_band_hz": [
+      600.0,
+      1800.0
+    ]
+  },
+  "dataset_summary": {
+    "total_samples": 1200,
+    "train_samples": 960,
+    "test_samples": 240
+  },
+  "overall_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0
+  },
+  "clean_condition_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0
+  },
+  "noisy_condition_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0
+  },
+  "confusion_matrix": [
+    [
+      120,
+      0
+    ],
+    [
+      0,
+      120
+    ]
+  ],
+  "avg_inference_latency_ms": 4.171,
+  "top_5_features": [
+    {
+      "feature": "mfcc_6_mean",
+      "importance": 0.2075
+    },
+    {
+      "feature": "mfcc_11_std",
+      "importance": 0.0837
+    },
+    {
+      "feature": "mfcc_5_mean",
+      "importance": 0.0767
+    },
+    {
+      "feature": "mfcc_8_std",
+      "importance": 0.0764
+    },
+    {
+      "feature": "mfcc_2_mean",
+      "importance": 0.0742
+    }
+  ]
+}

@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Monitor Dua Model · Laboratorium IoT</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08090a;
+      --panel: #0f1011;
+      --surface: #191a1b;
+      --border: rgba(255,255,255,.10);
+      --text: #f7f8f8;
+      --secondary: #d0d6e0;
+      --muted: #9da3ae;
+      --accent: #9a9bff;
+      --good: #70dcb5;
+      --warning: #f0c27b;
+      --danger: #ff9b9b;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { min-width: 300px; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; font-feature-settings: "cv01", "ss03"; }
+    button { font: inherit; }
+    a { color: var(--accent); }
+    .skip-link { position: absolute; left: 12px; top: -60px; padding: 12px; background: var(--surface); z-index: 9; }
+    .skip-link:focus { top: 12px; }
+    .topbar { border-bottom: 1px solid var(--border); background: var(--panel); }
+    .topbar-inner { max-width: 1460px; margin: auto; min-height: 66px; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 590; }
+    .brand-mark { width: 30px; height: 30px; border: 1px solid #4d515a; border-radius: 6px; display: grid; place-items: center; font: 12px var(--mono); color: var(--secondary); }
+    .brand small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+    .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .button { min-height: 44px; padding: 8px 14px; background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; }
+    .button:hover { background: rgba(255,255,255,.08); }
+    .button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    .badge { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 9px; font: 510 11px/1.5 var(--mono); color: var(--secondary); letter-spacing: .02em; white-space: nowrap; }
+    .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    [data-state="live"] { color: var(--good); }
+    [data-state="waiting"], [data-state="paused"] { color: var(--muted); }
+    [data-state="buffering"], [data-state="stale"], [data-state="degraded"] { color: var(--warning); }
+    [data-state="error"], [data-state="offline"], [data-state="alert"] { color: var(--danger); }
+    main { max-width: 1460px; margin: auto; padding: 28px; }
+    .page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 20px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(23px, 3vw, 30px); font-weight: 590; line-height: 1.2; letter-spacing: -.7px; margin-bottom: 8px; }
+    .subtitle, .muted { color: var(--muted); }
+    .mode-label { font: 12px/1.5 var(--mono); color: var(--secondary); white-space: nowrap; padding-bottom: 3px; }
+    .connection-notice { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--border); background: rgba(255,255,255,.02); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }
+    #connection-message { font-weight: 510; }
+    #last-update { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .model-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+    .panel { min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+    .panel-heading { display: flex; align-items: baseline; gap: 10px; }
+    .section-number { color: var(--muted); font: 11px var(--mono); }
+    h2 { font-size: 16px; font-weight: 590; letter-spacing: -.18px; }
+    .panel-description { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .panel-body { padding: 20px; }
+    .camera-stage { position: relative; aspect-ratio: 16 / 9; min-height: 180px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #090a0c; display: grid; place-items: center; margin-bottom: 16px; }
+    .camera-stage img { width: 100%; height: 100%; position: absolute; inset: 0; object-fit: contain; }
+    .camera-placeholder { position: relative; text-align: center; max-width: 88%; padding: 30px 12px; color: var(--secondary); }
+    .camera-placeholder .camera-glyph { display: block; font: 11px var(--mono); letter-spacing: .12em; color: var(--muted); margin-bottom: 10px; }
+    .camera-placeholder p { font-weight: 510; }
+    .camera-placeholder small { display: block; margin-top: 5px; color: var(--muted); }
+    .camera-label { position: absolute; left: 10px; top: 10px; z-index: 2; padding: 4px 7px; font: 10px var(--mono); background: #0f1011ed; border: 1px solid var(--border); border-radius: 4px; max-width: calc(100% - 20px); }
+    .result-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+    .result-row .label { color: var(--muted); }
+    .face-value { font-weight: 590; }
+    .eyes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .eye-card { min-width: 0; background: rgba(255,255,255,.025); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+    .eye-card h3 { font-size: 12px; color: var(--muted); font-weight: 400; margin-bottom: 7px; }
+    .eye-value { font-size: 16px; font-weight: 590; line-height: 1.4; overflow-wrap: anywhere; }
+    .combined-eye { margin: 10px 0 16px; display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
+    .combined-eye span:last-child { color: var(--secondary); text-align: right; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+    .metric { min-width: 0; }
+    .metric dt { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .metric dd { margin: 0; font: 18px/1.3 var(--mono); color: var(--text); overflow-wrap: anywhere; }
+    .metric dd .unit, .unit { font: 11px var(--mono); color: var(--muted); }
+    dl { margin: 0; }
+    .vision-secondary { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+    .vision-secondary .metric dd { font-size: 17px; }
+    .liveness-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-top: 15px; font-size: 12px; color: var(--muted); }
+    #liveness-state { color: var(--secondary); }
+    .performance { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font: 11px/1.6 var(--mono); color: var(--muted); }
+    .inline-error { color: var(--danger); background: rgba(255,155,155,.04); border: 1px solid rgba(255,155,155,.2); border-radius: 5px; margin-top: 14px; padding: 10px 12px; font-size: 12px; overflow-wrap: anywhere; }
+    .siren-output { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 3px 0 20px; }
+    .result-label { color: var(--muted); font-size: 12px; display: block; margin-bottom: 7px; }
+    .siren-value { font: 590 25px/1.3 var(--mono); letter-spacing: -.6px; overflow-wrap: anywhere; }
+    .probability-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    #siren-probability { font: 20px var(--mono); }
+    .probability-track { height: 5px; background: #292b31; border-radius: 4px; overflow: hidden; margin: 10px 0 8px; }
+    #probability-fill { display: block; height: 100%; width: 0; background: var(--accent); }
+    .small-note { font-size: 12px; color: var(--muted); }
+    .audio-details { margin: 18px 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .audio-details .metric dd { font-size: 17px; }
+    .spectrum-header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .spectrum-header h3 { font-size: 13px; font-weight: 510; }
+    .spectrum-header span { font: 11px var(--mono); color: var(--muted); }
+    .spectrum-wrap { position: relative; width: 100%; height: 210px; background: #090a0c; border: 1px solid var(--border); border-radius: 6px; }
+    #spectrum { display: block; width: 100%; height: 100%; }
+    #spectrum-placeholder { position: absolute; inset: 20px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; }
+    #spectrum-caption { margin-top: 8px; min-height: 36px; }
+    .source-note { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    .source-note strong { color: var(--secondary); font-weight: 510; }
+    .transport-panel { margin-top: 20px; }
+    .transport-top { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+    .transport-top dd { font-size: 14px; }
+    .transport-bottom { display: grid; grid-template-columns: 3fr 4fr; gap: 28px; padding-top: 18px; }
+    .packet-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+    .adc-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
+    .section-label { color: var(--secondary); font-size: 12px; font-weight: 510; margin-bottom: 12px; }
+    .adc-grid dd, .packet-grid dd { font-size: 17px; }
+    .adc-help { margin-top: 15px; }
+    .bottom-grid { display: grid; grid-template-columns: minmax(0,1.12fr) minmax(0,1fr); gap: 20px; margin-top: 20px; }
+    #serial-line { margin: 0; min-height: 94px; padding: 16px; background: #090a0c; border: 1px solid var(--border); border-radius: 6px; font: 13px/1.8 var(--mono); color: var(--secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .summary-note { margin-top: 12px; }
+    .event-panel .panel-header { align-items: center; }
+    #event-count { font: 11px var(--mono); color: var(--muted); }
+    #event-context { font-size: 12px; color: var(--muted); padding: 12px 20px 0; }
+    #event-log { padding: 0 20px 16px; margin: 12px 0 0; list-style: none; max-height: 250px; overflow-y: auto; scrollbar-color: #41434b #0f1011; }
+    #event-log li { display: grid; grid-template-columns: 82px minmax(0,1fr); gap: 10px; font-size: 12px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    #event-log time { color: var(--muted); font: 11px/1.7 var(--mono); overflow-wrap: anywhere; }
+    #event-log .event-message { overflow-wrap: anywhere; color: var(--secondary); }
+    #event-log .event-empty { display: block; color: var(--muted); border-bottom: 0; }
+    .safety-note { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-top: 20px; padding: 17px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+    .safety-note strong { color: var(--secondary); font-weight: 590; }
+    .authorization { white-space: nowrap; font: 11px/1.7 var(--mono); color: var(--secondary); }
+    footer { margin-top: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; font-size: 11px; color: var(--muted); }
+    noscript p { background: #251719; border: 1px solid #65383a; padding: 16px; margin-bottom: 20px; color: var(--danger); }
+    @media (min-width: 1440px) { main { padding-top: 32px; } }
+    @media (max-width: 950px) {
+      .model-grid, .bottom-grid { grid-template-columns: minmax(0,1fr); }
+      .camera-stage { max-height: 400px; }
+      .transport-bottom { grid-template-columns: minmax(0,1fr); gap: 22px; }
+      .spectrum-wrap { height: 230px; }
+    }
+    @media (max-width: 600px) {
+      .topbar-inner { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+      .toolbar { justify-content: space-between; width: 100%; }
+      main { padding: 22px 16px; }
+      .page-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+      .subtitle { font-size: 12px; }
+      .mode-label { font-size: 11px; }
+      .connection-notice { padding: 12px; gap: 6px; font-size: 12px; }
+      .panel-header { padding: 16px; }
+      .panel-body { padding: 16px; }
+      .panel-heading { gap: 8px; }
+      h2 { font-size: 15px; }
+      .panel-description { max-width: 225px; }
+      .model-grid, .bottom-grid { gap: 16px; }
+      .camera-stage { min-height: 160px; }
+      .eye-card { padding: 11px; }
+      .eye-value { font-size: 14px; }
+      .metric-grid { gap: 10px; }
+      .metric dd { font-size: 17px; }
+      .metric dt { font-size: 11px; }
+      .siren-value { font-size: 23px; }
+      .spectrum-wrap { height: 200px; }
+      .transport-top { grid-template-columns: 1fr 1fr; gap: 18px 16px; }
+      .adc-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+      .packet-grid { gap: 10px; }
+      .safety-note { flex-direction: column; gap: 12px; }
+      #event-log { padding-left: 16px; padding-right: 16px; }
+      #event-context { padding-left: 16px; padding-right: 16px; }
+      #event-log li { grid-template-columns: 72px minmax(0,1fr); gap: 8px; }
+      .transport-panel, .bottom-grid { margin-top: 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Lewati ke hasil pemantauan</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">2M</span><span>Laboratorium IoT<small>Monitor lokal / dua model</small></span></div>
+      <div class="toolbar">
+        <span id="connection-status" class="badge" data-state="waiting" role="status">MENUNGGU API</span>
+        <button id="pause-monitor" class="button" type="button" aria-pressed="false" aria-describedby="polling-help">Jeda monitor</button>
+      </div>
+    </div>
+  </header>
+  <main id="main">
+    <noscript><p>JavaScript tidak aktif. Seluruh hasil di halaman ini menunggu data; pemantauan langsung tidak tersedia.</p></noscript>
+    <div class="page-heading">
+      <div><h1>Monitoring wajah &amp; sirene</h1><p class="subtitle">Webcam laptop → model wajah/mata · MAX9814 → ESP32-S3 → WiFi → model audio</p></div>
+      <span class="mode-label">UJI PENGAMATAN / TANPA AKTUATOR</span>
+    </div>
+    <div id="connection-notice" class="connection-notice" role="status" aria-live="polite">
+      <span id="connection-message">Menunggu respons backend. Belum ada hasil pengamatan.</span>
+      <span id="last-update">Respons terakhir: —</span>
+    </div>
+
+    <div class="model-grid">
+      <section class="panel" aria-labelledby="vision-title">
+        <header class="panel-header">
+          <div><div class="panel-heading"><span class="section-number">01</span><h2 id="vision-title">Wajah &amp; kondisi mata</h2></div><p class="panel-description">MediaPipe Face Landmarker · EAR · webcam laptop</p></div>
+          <span id="vision-status" class="badge" data-state="waiting">MENUNGGU</span>
+        </header>
+        <div class="panel-body">
+          <div id="camera-stage" class="camera-stage">
+            <span id="camera-status" class="camera-label" data-state="waiting">KAMERA BELUM SIAP</span>
+            <img id="camera-image" alt="Frame webcam yang diproses backend untuk deteksi wajah dan mata" hidden>
+            <div id="camera-placeholder" class="camera-placeholder"><span class="camera-glyph" aria-hidden="true">WEBCAM / LOKAL</span><p id="camera-placeholder-title">Menunggu kamera</p><small id="camera-placeholder-detail">Video muncul setelah sumber vision mengirim data aktual.</small></div>
+          </div>
+          <div class="result-row"><span class="label">Wajah terdeteksi</span><span id="face-detected" class="face-value">—</span></div>
+          <div class="eyes">
+            <div class="eye-card"><h3>Mata kiri</h3><div id="left-eye-state" class="eye-value">—</div></div>
+            <div class="eye-card"><h3>Mata kanan</h3><div id="right-eye-state" class="eye-value">—</div></div>
+          </div>
+          <p class="combined-eye"><span>Kondisi gabungan</span><span id="eye-state">—</span></p>
+          <dl class="metric-grid">
+            <div class="metric"><dt>EAR kiri</dt><dd id="ear-left">—</dd></div>
+            <div class="metric"><dt>EAR kanan</dt><dd id="ear-right">—</dd></div>
+            <div class="metric"><dt>EAR rata-rata</dt><dd id="ear-avg">—</dd></div>
+          </dl>
+          <dl class="vision-secondary">
+            <div class="metric"><dt>Hitung kedip saat ini</dt><dd id="blink-counter">—</dd></div>
+            <div class="metric"><dt>Total kedipan</dt><dd id="total-blinks">—</dd></div>
+          </dl>
+          <p class="liveness-row"><span>Indikasi kedipan / liveness</span><span id="liveness-state">—</span></p>
+          <div class="performance"><span>FPS <span id="vision-fps">—</span></span><span>Proses <span id="vision-processing">—</span> ms</span></div>
+          <p id="vision-error" class="inline-error" role="status" hidden></p>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="audio-title">
+        <header class="panel-header">
+          <div><div class="panel-heading"><span class="section-number">02</span><h2 id="audio-title">Deteksi suara sirene</h2></div><p class="panel-description">MAX9814 melalui WiFi · Random Forest + STFT/MFCC</p></div>
+          <span id="audio-status" class="badge" data-state="waiting">MENUNGGU</span>
+        </header>
+        <div class="panel-body">
+          <div class="siren-output"><div><span class="result-label">Hasil model audio</span><strong id="siren-detected" class="siren-value">—</strong></div><span class="unit">SUMBER: MAX9814</span></div>
+          <div class="probability-line"><span class="muted">Probabilitas sirene</span><span id="siren-probability">—</span></div>
+          <div class="probability-track" aria-hidden="true"><span id="probability-fill"></span></div>
+          <p class="small-note">Keputusan sirene memerlukan dua jendela valid berturut-turut ≥ 0,80.</p>
+          <dl class="audio-details">
+            <div class="metric"><dt>Hit berurutan</dt><dd id="consecutive-hits">—</dd></div>
+            <div class="metric"><dt>Inferensi audio <span class="unit">ms</span></dt><dd id="audio-inference">—</dd></div>
+          </dl>
+          <div class="spectrum-header"><h3>Spektrum frekuensi</h3><span>MAGNITUDO RELATIF / Hz</span></div>
+          <div class="spectrum-wrap">
+            <canvas id="spectrum" width="640" height="240" role="img" aria-label="Spektrum belum tersedia dari MAX9814" aria-describedby="spectrum-caption"></canvas>
+            <div id="spectrum-placeholder">Menunggu spektrum dari sampel MAX9814.</div>
+          </div>
+          <p id="spectrum-caption" class="small-note">Belum ada data spektrum. Sumbu frekuensi mengikuti data backend, bukan gelombang contoh.</p>
+          <p id="audio-error" class="inline-error" role="status" hidden></p>
+          <div class="source-note"><strong>Model audio prototipe.</strong> Pelatihan/evaluasi sebelumnya menggunakan data sintetis; akurasi pada mikrofon nyata belum tervalidasi. Tidak menggunakan mikrofon laptop sebagai pengganti MAX9814.</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel transport-panel" aria-labelledby="transport-title">
+      <header class="panel-header"><div><div class="panel-heading"><span class="section-number">03</span><h2 id="transport-title">Transport &amp; sinyal MAX9814</h2></div><p class="panel-description">ESP32-S3 → WiFi lokal → UDP · statistik ADC bukan hasil klasifikasi</p></div><span id="transport-status" class="badge" data-state="waiting">MENUNGGU</span></header>
+      <div class="panel-body">
+        <dl class="transport-top">
+          <div class="metric"><dt>Pengirim ESP32-S3</dt><dd id="transport-peer">—</dd></div>
+          <div class="metric"><dt>Usia paket terakhir <span class="unit">s</span></dt><dd id="packet-age">—</dd></div>
+          <div class="metric"><dt>Laju sampel <span class="unit">Hz</span></dt><dd id="sample-rate">—</dd></div>
+          <div class="metric"><dt>Port UDP laptop</dt><dd id="udp-port">—</dd></div>
+        </dl>
+        <div class="transport-bottom">
+          <div><h3 class="section-label">Kesehatan paket</h3><dl class="packet-grid"><div class="metric"><dt>Diterima</dt><dd id="packet-count">—</dd></div><div class="metric"><dt>Gap urutan</dt><dd id="packet-gaps">—</dd></div><div class="metric"><dt>Ditolak</dt><dd id="packet-rejected">—</dd></div></dl></div>
+          <div><h3 class="section-label">ADC 12-bit · statistik jendela terakhir</h3><dl class="adc-grid"><div class="metric"><dt>Minimum</dt><dd id="adc-min">—</dd></div><div class="metric"><dt>Maksimum</dt><dd id="adc-max">—</dd></div><div class="metric"><dt>Puncak ke puncak</dt><dd id="adc-p2p">—</dd></div><div class="metric"><dt>Rata-rata</dt><dd id="adc-avg">—</dd></div></dl></div>
+        </div>
+        <p class="small-note adc-help">Data terputus atau paket tidak berurutan mereset kesinambungan audio. Nilai ADC yang bergerak belum membuktikan model mengenali sirene.</p>
+      </div>
+    </section>
+
+    <div class="bottom-grid">
+      <section class="panel" aria-labelledby="serial-title">
+        <header class="panel-header"><div><div class="panel-heading"><span class="section-number">04</span><h2 id="serial-title">Ringkasan Serial ESP</h2></div><p class="panel-description">Teks backend yang sama dengan balasan ke Arduino Serial Monitor</p></div></header>
+        <div class="panel-body"><pre id="serial-line" aria-label="Ringkasan hasil untuk Serial ESP">—</pre><p id="serial-context" class="small-note summary-note">Belum ada ringkasan terkini dari backend.</p></div>
+      </section>
+      <section class="panel event-panel" aria-labelledby="events-title">
+        <header class="panel-header"><div class="panel-heading"><span class="section-number">05</span><h2 id="events-title">Log pengamatan</h2></div><span id="event-count">0 / 30</span></header>
+        <p id="event-context">Maksimum 30 peristiwa terakhir dari backend; terbaru di atas.</p>
+        <ol id="event-log" aria-label="Log pengamatan terakhir"><li class="event-empty">Belum ada peristiwa.</li></ol>
+      </section>
+    </div>
+
+    <aside class="safety-note" aria-label="Batas penggunaan">
+      <p><strong>Pengamatan, bukan keputusan akses.</strong> Deteksi wajah dan kedipan bukan verifikasi identitas serta tidak menjamin anti-replay. Tidak ada perintah gerbang, servo, atau aktuator dari halaman ini.</p>
+      <span class="authorization">OTORISASI: <span id="authorized" data-authorized="false">TIDAK DIBERIKAN</span></span>
+    </aside>
+    <footer><span id="polling-help">Pembaruan tampilan setiap 500 ms setelah respons. Jeda monitor hanya menjeda tampilan, bukan model atau ESP.</span><span>API &amp; aset lokal · tanpa CDN</span></footer>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+
+    // This page is a read-only client. It never accesses camera/microphone APIs,
+    // serial ports, credentials, actuators, or model-control endpoints.
+    const POLL_MS = 500;
+    const REQUEST_TIMEOUT_MS = 2500;
+    const DASH = '—';
+    const byId = id => document.getElementById(id);
+    const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+    const finite = value => typeof value === 'number' && Number.isFinite(value);
+    const nonnegative = value => finite(value) && value >= 0;
+    const stringValue = value => typeof value === 'string' && value.trim() ? value : null;
+    const text = (id, value) => { byId(id).textContent = value; };
+    const number = (value, digits = 0) => nonnegative(value)
+      ? value.toLocaleString('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : DASH;
+    const badge = (id, state, label) => {
+      byId(id).dataset.state = state;
+      text(id, label);
+    };
+    const statusLabels = { waiting: 'MENUNGGU', buffering: 'MENGISI BUFFER', live: 'AKTIF', error: 'ERROR', stale: 'BASI' };
+    const statusOf = (part, allowed) => allowed.includes(part.status) ? part.status : 'error';
+    const validEyeStates = new Set(['TERBUKA', 'TERTUTUP', 'TRANSISI', 'TIDAK_TERDETEKSI']);
+    const eyeLabel = value => validEyeStates.has(value) ? value.replaceAll('_', ' ') : DASH;
+    const visionMetrics = ['face-detected', 'left-eye-state', 'right-eye-state', 'eye-state', 'ear-left', 'ear-right', 'ear-avg', 'blink-counter', 'total-blinks', 'liveness-state', 'vision-fps', 'vision-processing'];
+    const audioMetrics = ['siren-detected', 'siren-probability', 'consecutive-hits', 'audio-inference'];
+    const adcMetrics = ['adc-min', 'adc-max', 'adc-p2p', 'adc-avg'];
+    const transportMetrics = ['transport-peer', 'packet-age', 'sample-rate', 'udp-port', 'packet-count', 'packet-gaps', 'packet-rejected'];
+    const resetMetrics = ids => ids.forEach(id => text(id, DASH));
+    const showError = (id, message) => {
+      text(id, message || '');
+      byId(id).hidden = !message;
+    };
+
+    let paused = false;
+    let inFlight = false;
+    let pollTimer = null;
+    let activeRequest = null;
+    let monitorEpoch = 0;
+    let lastResponseAt = null;
+    let spectrumPoints = [];
+    let cameraWanted = false;
+    let cameraConnecting = false;
+    let cameraLoaded = false;
+    let cameraAttemptAt = 0;
+    let cameraTimeout = null;
+    const camera = byId('camera-image');
+
+    function cameraPlaceholder(state, title, detail) {
+      camera.hidden = true;
+      byId('camera-placeholder').hidden = false;
+      badge('camera-status', state, state === 'error' ? 'VIDEO ERROR' : state === 'live' ? 'MEMUAT VIDEO' : 'VIDEO TIDAK AKTIF');
+      text('camera-placeholder-title', title);
+      text('camera-placeholder-detail', detail);
+    }
+
+    function stopCamera(state, title, detail) {
+      cameraWanted = false;
+      cameraConnecting = false;
+      cameraLoaded = false;
+      clearTimeout(cameraTimeout);
+      camera.removeAttribute('src');
+      cameraPlaceholder(state, title, detail);
+    }
+
+    function startCamera() {
+      cameraWanted = true;
+      if (cameraLoaded || cameraConnecting || Date.now() - cameraAttemptAt < 5000) return;
+      cameraAttemptAt = Date.now();
+      cameraConnecting = true;
+      cameraPlaceholder('waiting', 'Memuat video lokal', 'Hasil model terpisah dari ketersediaan tampilan video.');
+      camera.src = '/video_feed';
+      clearTimeout(cameraTimeout);
+      cameraTimeout = setTimeout(() => {
+        if (cameraWanted && !cameraLoaded) {
+          cameraConnecting = false;
+          camera.removeAttribute('src');
+          cameraPlaceholder('error', 'Video tidak tersedia', 'Tidak menerima frame MJPEG. Hasil numerik mengikuti status API.');
+        }
+      }, 6000);
+    }
+
+    camera.addEventListener('load', () => {
+      if (!cameraWanted || paused) return;
+      clearTimeout(cameraTimeout);
+      cameraConnecting = false;
+      cameraLoaded = true;
+      camera.hidden = false;
+      byId('camera-placeholder').hidden = true;
+      badge('camera-status', 'live', 'VIDEO LOKAL');
+    });
+    camera.addEventListener('error', () => {
+      if (!cameraWanted) return;
+      clearTimeout(cameraTimeout);
+      cameraConnecting = false;
+      cameraLoaded = false;
+      camera.hidden = true;
+      cameraPlaceholder('error', 'Video tidak tersedia', 'Gagal memuat /video_feed. Tidak ada frame lama yang ditampilkan.');
+    });
+
+    function drawSpectrum() {
+      const canvas = byId('spectrum');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        byId('spectrum-placeholder').hidden = false;
+        text('spectrum-placeholder', 'Canvas tidak didukung browser ini.');
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(200, rect.width);
+      const height = Math.max(120, rect.height);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      if (spectrumPoints.length < 2) return;
+      const left = 42, right = width - 14, top = 18, bottom = height - 30;
+      const minFreq = spectrumPoints[0][0];
+      const maxFreq = spectrumPoints[spectrumPoints.length - 1][0];
+      const maxMag = spectrumPoints.reduce((peak, point) => Math.max(peak, point[1]), 0);
+      const magnitudeScale = maxMag > 0 ? maxMag : 1;
+      ctx.strokeStyle = 'rgba(255,255,255,.09)';
+      ctx.lineWidth = 1;
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#9da3ae';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      const magnitudeLabel = value => value === 0 ? '0' : value >= 1000 || value < .01 ? value.toExponential(1) : value.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+      for (let i = 0; i <= 2; i++) {
+        const y = top + (bottom - top) * i / 2;
+        ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+        ctx.fillText(magnitudeLabel(maxMag * (1 - i / 2)), left - 7, y);
+      }
+      for (let i = 0; i <= 4; i++) {
+        const x = left + (right - left) * i / 4;
+        const frequency = minFreq + (maxFreq - minFreq) * i / 4;
+        ctx.textAlign = i === 0 ? 'left' : i === 4 ? 'right' : 'center';
+        ctx.fillText(number(frequency), x, bottom + 17);
+      }
+      ctx.beginPath();
+      spectrumPoints.forEach(([frequency, magnitude], index) => {
+        const x = left + ((frequency - minFreq) / (maxFreq - minFreq)) * (right - left);
+        const y = bottom - (magnitude / magnitudeScale) * (bottom - top);
+        if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = '#a8afff';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+
+    function updateSpectrum(audio, active) {
+      const freqs = audio.spectrum_freqs_hz;
+      const magnitudes = audio.spectrum_magnitudes;
+      spectrumPoints = [];
+      if (active && Array.isArray(freqs) && Array.isArray(magnitudes) && freqs.length === magnitudes.length && freqs.length <= 16384) {
+        spectrumPoints = freqs.map((frequency, index) => [frequency, magnitudes[index]])
+          .filter(([frequency, magnitude]) => nonnegative(frequency) && nonnegative(magnitude))
+          .sort((a, b) => a[0] - b[0]);
+      }
+      const usable = spectrumPoints.length >= 2 && spectrumPoints[spectrumPoints.length - 1][0] > spectrumPoints[0][0];
+      if (!usable) spectrumPoints = [];
+      byId('spectrum-placeholder').hidden = usable;
+      text('spectrum-placeholder', active ? 'Spektrum belum tersedia dari backend.' : 'Tidak ada spektrum aktif dari MAX9814.');
+      const description = usable
+        ? 'Data aktual dari API MAX9814: ' + number(spectrumPoints.length) + ' bin, ' + number(spectrumPoints[0][0]) + '–' + number(spectrumPoints[spectrumPoints.length - 1][0]) + ' Hz. Magnitudo diskalakan relatif ke puncak jendela ini; bukan dB SPL.'
+        : 'Spektrum tidak ditampilkan tanpa sampel audio yang aktif dan valid.';
+      text('spectrum-caption', description);
+      byId('spectrum').setAttribute('aria-label', description);
+      drawSpectrum();
+    }
+
+    function renderEvents(events) {
+      const rows = Array.isArray(events) ? events.filter(isRecord).slice(-30).reverse() : [];
+      const log = byId('event-log');
+      log.replaceChildren();
+      text('event-count', rows.length + ' / 30');
+      text('event-context', 'Maksimum 30 peristiwa terakhir dari backend; terbaru di atas.');
+      if (!rows.length) {
+        const item = document.createElement('li');
+        item.className = 'event-empty';
+        item.textContent = 'Belum ada peristiwa.';
+        log.appendChild(item);
+        return;
+      }
+      rows.forEach(event => {
+        const item = document.createElement('li');
+        const time = document.createElement('time');
+        const message = document.createElement('span');
+        time.textContent = stringValue(event.time) || DASH;
+        message.textContent = stringValue(event.message) || DASH;
+        message.className = 'event-message';
+        item.append(time, message);
+        log.appendChild(item);
+      });
+    }
+
+    function renderState(payload) {
+      const vision = payload.vision, audio = payload.audio, transport = payload.transport;
+      let visionStatus = statusOf(vision, ['waiting', 'live', 'error', 'stale']);
+      let audioStatus = statusOf(audio, ['waiting', 'buffering', 'live', 'error', 'stale']);
+      const transportStatus = statusOf(transport, ['waiting', 'live', 'stale']);
+      let visionError = stringValue(vision.error);
+      let audioError = stringValue(audio.error);
+      if (visionError) visionStatus = 'error';
+      if (audioError) audioStatus = 'error';
+      if (audio.source !== 'MAX9814_ESP32') {
+        audioStatus = 'error';
+        audioError = 'Sumber audio tidak sesuai kontrak MAX9814_ESP32; hasil tidak ditampilkan.';
+      }
+      if (audioStatus === 'live' && transportStatus !== 'live') {
+        audioStatus = 'stale';
+        audioError = 'Hasil audio tidak aktif karena transport MAX9814 belum mengirim paket terkini.';
+      }
+      const visionLive = visionStatus === 'live';
+      const audioLive = audioStatus === 'live';
+      badge('vision-status', visionStatus, statusLabels[visionStatus]);
+      badge('audio-status', audioStatus, statusLabels[audioStatus]);
+      badge('transport-status', transportStatus, statusLabels[transportStatus] || 'ERROR');
+      showError('vision-error', visionError || (visionStatus === 'error' ? 'Sumber vision melaporkan error tanpa rincian.' : null));
+      showError('audio-error', audioError || (audioStatus === 'error' ? 'Sumber audio melaporkan error tanpa rincian.' : null));
+
+      if (visionLive) {
+        const face = vision.face_detected;
+        text('face-detected', face === true ? 'YA' : face === false ? 'TIDAK' : DASH);
+        text('left-eye-state', face === true ? eyeLabel(vision.left_eye_state) : face === false ? 'TIDAK TERDETEKSI' : DASH);
+        text('right-eye-state', face === true ? eyeLabel(vision.right_eye_state) : face === false ? 'TIDAK TERDETEKSI' : DASH);
+        text('eye-state', face === true ? eyeLabel(vision.eye_state) : face === false ? 'TIDAK TERDETEKSI' : DASH);
+        text('ear-left', face === true ? number(vision.ear_left, 3) : DASH);
+        text('ear-right', face === true ? number(vision.ear_right, 3) : DASH);
+        text('ear-avg', face === true ? number(vision.ear_avg, 3) : DASH);
+        text('blink-counter', number(vision.blink_counter));
+        text('total-blinks', number(vision.total_blinks));
+        text('liveness-state', face === false ? 'Wajah tidak terlihat' : vision.liveness_verified === true ? 'Indikasi kedipan terpenuhi' : vision.liveness_verified === false ? 'Belum terpenuhi' : DASH);
+        text('vision-fps', number(vision.fps, 1));
+        text('vision-processing', number(vision.processing_ms, 1));
+        startCamera();
+      } else {
+        resetMetrics(visionMetrics);
+        stopCamera(visionStatus, visionStatus === 'error' ? 'Kamera / vision error' : visionStatus === 'stale' ? 'Video dihentikan · data basi' : 'Menunggu kamera',
+          visionError || 'Tidak menampilkan frame lama ketika sumber vision tidak aktif.');
+      }
+
+      resetMetrics(audioMetrics);
+      byId('siren-detected').removeAttribute('data-state');
+      byId('probability-fill').style.width = '0%';
+      if (audioLive) {
+        const siren = audio.siren_detected;
+        text('siren-detected', siren === true ? 'SIRENE' : siren === false ? 'BUKAN SIRENE' : DASH);
+        if (siren === true) byId('siren-detected').dataset.state = 'alert';
+        const probability = audio.siren_probability;
+        if (finite(probability) && probability >= 0 && probability <= 1) {
+          text('siren-probability', number(probability * 100, 1) + ' %');
+          byId('probability-fill').style.width = (probability * 100) + '%';
+        }
+        text('consecutive-hits', number(audio.consecutive_hits));
+        text('audio-inference', number(audio.inference_ms, 1));
+      }
+      const adcAvailable = transportStatus === 'live' && (audioLive || audioStatus === 'buffering');
+      text('adc-min', adcAvailable ? number(audio.adc_min) : DASH);
+      text('adc-max', adcAvailable ? number(audio.adc_max) : DASH);
+      text('adc-p2p', adcAvailable ? number(audio.adc_p2p) : DASH);
+      text('adc-avg', adcAvailable ? number(audio.adc_avg, 1) : DASH);
+      updateSpectrum(audio, audioLive);
+      text('transport-peer', stringValue(transport.peer) || DASH);
+      text('packet-age', number(transport.seconds_since_packet, 2));
+      text('sample-rate', number(transport.sample_rate_hz));
+      text('udp-port', number(transport.udp_port));
+      text('packet-count', number(transport.packets));
+      text('packet-gaps', number(transport.gaps));
+      text('packet-rejected', number(transport.rejected));
+      text('serial-line', stringValue(payload.serial_line) || DASH);
+      text('serial-context', 'Teks diterima persis dari API; status sumber di atas menentukan apakah hasil masih aktif. Ini bukan konfirmasi penerimaan USB oleh ESP.');
+      renderEvents(payload.events);
+      // Liveness and a siren score never authorize access, even if a malformed
+      // response contains authorized=true. There is deliberately no gate action.
+      text('authorized', 'TIDAK DIBERIKAN');
+      byId('authorized').dataset.authorized = 'false';
+      lastResponseAt = Date.now();
+      text('last-update', 'Respons terakhir: ' + new Date(lastResponseAt).toLocaleTimeString('id-ID'));
+      const degraded = [visionStatus, audioStatus, transportStatus].some(status => ['error', 'stale'].includes(status));
+      badge('connection-status', degraded ? 'degraded' : 'live', degraded ? 'API TERHUBUNG / PERIKSA SUMBER' : 'API TERHUBUNG');
+      text('connection-message', degraded ? 'API terhubung; satu atau lebih sumber error atau basi. Hasil tidak aktif dikosongkan.' : 'API terhubung. Status masing-masing sumber ditampilkan pada panel.');
+    }
+
+    function invalidate(state, message) {
+      resetMetrics([...visionMetrics, ...audioMetrics, ...adcMetrics, ...transportMetrics]);
+      const sourceState = state === 'paused' ? 'paused' : 'stale';
+      badge('vision-status', sourceState, state === 'paused' ? 'DIJEDA' : 'TIDAK TERHUBUNG');
+      badge('audio-status', sourceState, state === 'paused' ? 'DIJEDA' : 'TIDAK TERHUBUNG');
+      badge('transport-status', sourceState, state === 'paused' ? 'DIJEDA' : 'TIDAK TERHUBUNG');
+      badge('connection-status', state, state === 'paused' ? 'MONITOR DIJEDA' : 'OFFLINE');
+      text('connection-message', message);
+      text('last-update', lastResponseAt
+        ? 'Respons terakhir: ' + new Date(lastResponseAt).toLocaleTimeString('id-ID') + ' · bukan data aktif'
+        : 'Belum ada respons API yang valid.');
+      showError('vision-error', null);
+      showError('audio-error', null);
+      byId('siren-detected').removeAttribute('data-state');
+      byId('probability-fill').style.width = '0%';
+      stopCamera(sourceState, state === 'paused' ? 'Tampilan video dijeda' : 'Video dihentikan · backend offline',
+        'Frame sebelumnya disembunyikan agar tidak disalahartikan sebagai video langsung.');
+      updateSpectrum({}, false);
+      text('serial-line', DASH);
+      text('serial-context', 'Tidak ada ringkasan aktif. Menunggu respons backend yang baru.');
+      text('event-context', 'Log historis dari respons terakhir; bukan hasil aktif saat monitor dijeda atau offline.');
+    }
+
+    byId('pause-monitor').addEventListener('click', () => {
+      paused = !paused;
+      monitorEpoch++;
+      byId('pause-monitor').setAttribute('aria-pressed', String(paused));
+      text('pause-monitor', paused ? 'Lanjutkan monitor' : 'Jeda monitor');
+      clearTimeout(pollTimer);
+      if (paused) {
+        if (activeRequest) activeRequest.abort();
+        invalidate('paused', 'Monitor dijeda. Model, ESP, dan Serial Monitor tidak dihentikan; hasil tampilan dikosongkan.');
+      } else if (window.location.protocol === 'file:') {
+        invalidate('offline', 'Buka halaman melalui alamat HTTP backend Flask, bukan file lokal.');
+      } else {
+        badge('connection-status', 'waiting', 'MENUNGGU API');
+        text('connection-message', 'Monitor dilanjutkan. Menunggu respons backend yang baru.');
+        if (!inFlight) poll();
+      }
+    });
+
+    function schedulePoll() {
+      clearTimeout(pollTimer);
+      if (!paused) pollTimer = setTimeout(poll, POLL_MS);
+    }
+
+    async function poll() {
+      if (paused || inFlight) return;
+      inFlight = true;
+      const controller = new AbortController();
+      const requestEpoch = monitorEpoch;
+      activeRequest = controller;
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch('/api/state', { signal: controller.signal, cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const payload = await response.json();
+        if (!isRecord(payload) || !isRecord(payload.vision) || !isRecord(payload.audio) || !isRecord(payload.transport)) {
+          throw new Error('Format respons API tidak sesuai kontrak.');
+        }
+        if (!paused && requestEpoch === monitorEpoch && !controller.signal.aborted) renderState(payload);
+      } catch (error) {
+        if (!paused && requestEpoch === monitorEpoch) {
+          invalidate('offline', 'Backend tidak tersedia: ' + (error.name === 'AbortError' ? 'batas waktu permintaan terlampaui.' : error.message));
+        }
+      } finally {
+        clearTimeout(timeout);
+        if (activeRequest === controller) activeRequest = null;
+        inFlight = false;
+        schedulePoll();
+      }
+    }
+
+    window.addEventListener('resize', drawSpectrum);
+    if (window.location.protocol === 'file:') {
+      badge('connection-status', 'offline', 'BUKA MELALUI BACKEND');
+      text('connection-message', 'Halaman dibuka sebagai file lokal. Buka alamat HTTP backend Flask agar /api/state dan /video_feed tersedia.');
+    } else {
+      poll();
+    }
+  })();
+  </script>
+</body>
+</html>

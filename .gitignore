@@ -1,0 +1,51 @@
+# Lingkungan Python dan cache
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.uv-cache/
+
+# Rahasia dan konfigurasi lokal (jangan di-commit)
+.env
+.env.*
+!.env.example
+secrets.h
+secrets.local.h
+*.local.*
+config.local.*
+
+# Model Google diambil dengan scripts/download_models.py
+ml_engine/models/face_landmarker.task
+
+# Data pribadi dan hasil uji bukan source code
+ml_engine/dataset/
+reports/
+logs/
+verification/
+smart_gate_full/verification/
+*.wav
+*.mp3
+*.mp4
+*.avi
+*.jpg
+*.jpeg
+*.png
+*.csv
+
+# Artefak compiler, arsip, dan backup
+build/
+dist/
+*.exe
+*.pdb
+*.elf
+*.bin
+*.o
+*.obj
+*.zip
+*.bak
+*.old
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

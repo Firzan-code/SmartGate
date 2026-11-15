@@ -1,0 +1,2 @@
+# Dependensi demo dua model, diuji dengan Python 3.11 (Windows).
+-r requirements_dua_model.txt
