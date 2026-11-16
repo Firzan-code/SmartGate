@@ -23,7 +23,7 @@ class PacketContractTests(unittest.TestCase):
         good = struct.pack('<4sIIIHH', b'SGA1', 7, 42, 16000, 320, 0) + struct.pack('<320H', *range(320))
         cases = [good[:-1], good + b'0', b'BAD!' + good[4:],
                  good[:12] + struct.pack('<I', 4000) + good[16:],
-                 good[:18] + struct.pack('<H', 2) + good[20:],
+                 good[:18] + struct.pack('<H', 32) + good[20:],
                  good[:20] + struct.pack('<H', 4096) + good[22:]]
         for raw in cases:
             with self.subTest(raw=raw[:20]):

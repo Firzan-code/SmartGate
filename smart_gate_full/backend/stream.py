@@ -18,8 +18,13 @@ class AudioWindow:
 
 
 class AudioStream:
-    def __init__(self):
-        self._blocks = deque(maxlen=50)
+    def __init__(self, blocks_per_window=50, hop_blocks=25):
+        if (not isinstance(blocks_per_window, int) or not isinstance(hop_blocks, int)
+                or blocks_per_window < 1 or hop_blocks < 1 or hop_blocks > blocks_per_window):
+            raise ValueError('Ukuran window/hop audio tidak valid')
+        self.blocks_per_window = blocks_per_window
+        self.hop_blocks = hop_blocks
+        self._blocks = deque(maxlen=blocks_per_window)
         self._retired = deque(maxlen=8)
         self.peer = None
         self.boot = None
@@ -28,6 +33,8 @@ class AudioStream:
         self.generation = 0
         self.packets = self.gaps = self.rejected = 0
         self._until_hop = 0
+        self.servo_present = False
+        self.servo_state = 'unavailable'
 
     def _reset(self):
         self.generation += 1
@@ -60,10 +67,12 @@ class AudioStream:
             self._reset()
         self.expected = (packet.sequence + 1) & 0xffffffff
         self.last_packet = now
+        self.servo_present = packet.servo_present
+        self.servo_state = packet.servo_state
         self.packets += 1
         self._blocks.append(packet.samples)
         self._until_hop += 1
-        if len(self._blocks) < 50 or self._until_hop < 25:
+        if len(self._blocks) < self.blocks_per_window or self._until_hop < self.hop_blocks:
             return None
         self._until_hop = 0
         raw = np.concatenate(self._blocks)

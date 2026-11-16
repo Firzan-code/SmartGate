@@ -1,4 +1,4 @@
-"""Uji dua model lokal: webcam + MAX9814 Wi-Fi, tanpa kontrol gerbang."""
+"""Webcam + MAX9814 Wi-Fi; opsi servo sirene untuk demo meja."""
 import argparse
 import json
 import math
@@ -24,6 +24,7 @@ def main(argv=None):
     parser.add_argument('--camera', type=int, default=0, help='Indeks webcam laptop')
     parser.add_argument('--backend', choices=['dshow', 'auto', 'msmf'], default='dshow', help='Backend webcam Windows')
     parser.add_argument('--no-camera', action='store_true', help='Nonaktifkan kamera untuk diagnosis jaringan')
+    parser.add_argument('--enable-servo', action='store_true', help='Aktifkan demo meja sirene -> GPIO42, buka 5 detik, cooldown 10 detik')
     parser.add_argument('--port', type=int, default=5000, help='HTTP dashboard lokal')
     parser.add_argument('--udp-port', type=int, default=5006, help='UDP audio pada jaringan lokal')
     parser.add_argument('--seconds', type=float, default=0., help='Durasi uji, 0 berjalan sampai Ctrl+C')
@@ -36,7 +37,7 @@ def main(argv=None):
     from smart_gate_full.backend.app import create_app
     from smart_gate_full.backend.runtime import MonitorRuntime
     from werkzeug.serving import make_server
-    runtime = MonitorRuntime()
+    runtime = MonitorRuntime(servo_enabled=args.enable_servo)
     server = None
     exit_code = 0
     try:
@@ -46,7 +47,7 @@ def main(argv=None):
         print(f'[DASHBOARD] http://127.0.0.1:{args.port}', flush=True)
         print(f'[ESP] SERVER_IP = {lan_ip()} | UDP {args.udp_port}', flush=True)
         print('[PRIVASI] Webcam lokal, tanpa penyimpanan audio/video. Tidak membuka COM9.', flush=True)
-        print('[BATAS] Audio model sintetis; kedipan bukan identitas/otorisasi.', flush=True)
+        print('[MODEL] siren_ast_v2 ONNX, jendela audio 3 detik; kedipan bukan identitas/otorisasi.', flush=True)
         if not args.no_camera:
             print('[KAMERA] Mengaktifkan webcam laptop untuk uji ini; Ctrl+C untuk berhenti.', flush=True)
         runtime.start(camera_enabled=not args.no_camera, camera_index=args.camera,

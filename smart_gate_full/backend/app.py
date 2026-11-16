@@ -40,7 +40,7 @@ def create_app(runtime):
     @app.get('/health')
     def health():
         state = runtime.snapshot()
-        return jsonify(mode='observation_only', http='ok',
+        return jsonify(mode='siren_servo_bench' if state.get('servo', {}).get('enabled') else 'observation_only', http='ok',
                        vision=state['vision']['status'], audio=state['audio']['status'])
 
     @app.get('/video_feed')

@@ -1,54 +1,81 @@
-"""Reuse the local RF artifact on real incoming ADC windows; never auto-train."""
-from pathlib import Path
+"""AST ONNX classifier over continuous three-second MAX9814 audio."""
 import time
-import joblib
+
 import numpy as np
 
-from ml_engine.train_siren_model import (MODEL_PATH, compute_stft_frames,
-                                         extract_stft_mfcc_features)
+from ml_engine.ast_siren import ASTSirenModel
+from ml_engine.train_siren_model import compute_stft_frames
 
 
 class AudioClassifier:
-    def __init__(self, model_path=None):
-        path = Path(model_path) if model_path is not None else MODEL_PATH
-        if not path.is_file():
-            raise FileNotFoundError(f'Model audio tidak ditemukan: {path}')
-        bundle = joblib.load(path)  # trusted, project-local artifact only
-        self.model, self.scaler = bundle['model'], bundle['scaler']
-        classes = list(self.model.classes_)
-        self._siren_index = classes.index(1)
-        if self.model.n_features_in_ != 30 or self.scaler.n_features_in_ != 30:
-            raise ValueError('Model audio tidak cocok dengan kontrak 30 fitur')
+    window_samples = 48000
+    hop_packets = 150
+    max_result_age_sec = 5.0
+
+    def __init__(self, model_path=None, ast_model=None):
+        self.model = ast_model or ASTSirenModel(model_path)
         self._generation = self._sequence = None
         self._hits = 0
+
+    def _base_result(self, window, status):
+        raw = np.asarray(window.samples)
+        return {
+            "status": status,
+            "source": "MAX9814_ESP32",
+            "siren_probability": None,
+            "siren_detected": None,
+            "consecutive_hits": 0,
+            "error": None,
+            "spectrum_freqs_hz": [],
+            "spectrum_magnitudes": [],
+            "inference_ms": None,
+            "adc_min": window.adc_min,
+            "adc_max": window.adc_max,
+            "adc_avg": round(window.adc_avg, 1),
+            "adc_p2p": window.adc_max - window.adc_min,
+            "clipped": bool(raw.min() <= 10 or raw.max() >= 4085),
+            "model_name": "siren_ast_v2",
+            "model_note": "AST ONNX 3 detik; validasi suara lapangan tetap diperlukan",
+        }
 
     def predict(self, window):
         started = time.perf_counter()
         raw = np.asarray(window.samples)
-        if raw.shape != (16000,) or not np.isfinite(raw).all() or raw.min() < 0 or raw.max() > 4095:
-            raise ValueError('Inferensi memerlukan satu detik ADC valid 16 kHz')
-        signal = (raw.astype(np.float64) - raw.mean()) / 2048.
-        features, summary = extract_stft_mfcc_features(signal)
-        scaled = self.scaler.transform(features.reshape(1, -1))
-        probability = float(self.model.predict_proba(scaled)[0, self._siren_index])
-        if not np.isfinite(probability) or not 0 <= probability <= 1:
-            raise ValueError('Model mengembalikan probabilitas invalid')
-        if self._generation != window.generation or self._sequence is None or ((window.sequence - self._sequence) & 0xffffffff) != 25:
+        if raw.shape != (self.window_samples,) or not np.isfinite(raw).all() or raw.min() < 0 or raw.max() > 4095:
+            raise ValueError("Inferensi AST memerlukan tiga detik ADC valid 16 kHz")
+
+        contiguous = (
+            self._generation == window.generation
+            and self._sequence is not None
+            and ((window.sequence - self._sequence) & 0xFFFFFFFF) == self.hop_packets
+        )
+        if not contiguous:
             self._hits = 0
-        self._hits = min(2, self._hits + 1) if probability >= .80 else 0
         self._generation, self._sequence = window.generation, window.sequence
-        freqs, mag = compute_stft_frames(signal)
+        clip = (raw.astype(np.float32) - np.float32(raw.mean())) / np.float32(2048.0)
+        result = self._base_result(window, "live")
+        prediction = self.model.predict(clip)
+        probabilities = prediction["all_probabilities"]
+        siren_probability = float(probabilities.get("ambulance", 0.0) + probabilities.get("other_siren", 0.0))
+        if not np.isfinite(siren_probability) or not 0 <= siren_probability <= 1:
+            raise ValueError("Probabilitas sirene AST invalid")
+        self._hits = min(2, self._hits + 1) if siren_probability >= 0.80 else 0
+
+        freqs, magnitude = compute_stft_frames(clip.astype(np.float64))
         mask = freqs <= 4000
-        spectrum = mag.mean(axis=0)[mask][::4]
+        spectrum = magnitude.mean(axis=0)[mask][::4]
         spectrum = spectrum / max(float(spectrum.max()), 1e-9)
-        return {'status': 'live', 'source': 'MAX9814_ESP32',
-                'siren_probability': round(probability, 4), 'siren_detected': self._hits >= 2,
-                'consecutive_hits': self._hits, 'error': None,
-                'spectrum_freqs_hz': freqs[mask][::4].round(1).tolist(),
-                'spectrum_magnitudes': spectrum.round(4).tolist(),
-                'inference_ms': round((time.perf_counter() - started) * 1000, 2),
-                'adc_min': window.adc_min, 'adc_max': window.adc_max,
-                'adc_avg': round(window.adc_avg, 1), 'adc_p2p': window.adc_max - window.adc_min,
-                'clipped': bool(raw.min() <= 10 or raw.max() >= 4085),
-                'ber_600_1800': round(summary['ber_mean'], 4),
-                'model_note': 'Prototipe dilatih data sintetis; validasi mikrofon nyata belum selesai'}
+        result.update({
+            "status": "live",
+            "siren_probability": round(siren_probability, 4),
+            "siren_detected": self._hits >= 2,
+            "consecutive_hits": self._hits,
+            "spectrum_freqs_hz": freqs[mask][::4].round(1).tolist(),
+            "spectrum_magnitudes": spectrum.round(4).tolist(),
+            "inference_ms": round((time.perf_counter() - started) * 1000, 2),
+            "class_name": prediction["class_name"],
+            "class_probability": round(float(prediction["probability"]), 4),
+            "class_probabilities": {key: round(float(value), 4) for key, value in probabilities.items()},
+            "model_buffer_samples": 48000,
+        })
+        return result

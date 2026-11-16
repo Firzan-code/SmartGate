@@ -190,7 +190,7 @@
     <noscript><p>JavaScript tidak aktif. Seluruh hasil di halaman ini menunggu data; pemantauan langsung tidak tersedia.</p></noscript>
     <div class="page-heading">
       <div><h1>Monitoring wajah &amp; sirene</h1><p class="subtitle">Webcam laptop → model wajah/mata · MAX9814 → ESP32-S3 → WiFi → model audio</p></div>
-      <span class="mode-label">UJI PENGAMATAN / TANPA AKTUATOR</span>
+      <span class="mode-label">DEMO MEJA / STATUS AKTUATOR DI BAWAH</span>
     </div>
     <div id="connection-notice" class="connection-notice" role="status" aria-live="polite">
       <span id="connection-message">Menunggu respons backend. Belum ada hasil pengamatan.</span>
@@ -232,14 +232,14 @@
 
       <section class="panel" aria-labelledby="audio-title">
         <header class="panel-header">
-          <div><div class="panel-heading"><span class="section-number">02</span><h2 id="audio-title">Deteksi suara sirene</h2></div><p class="panel-description">MAX9814 melalui WiFi · Random Forest + STFT/MFCC</p></div>
+          <div><div class="panel-heading"><span class="section-number">02</span><h2 id="audio-title">Deteksi suara sirene</h2></div><p class="panel-description">MAX9814 melalui WiFi · Audio Spectrogram Transformer (AST) ONNX · klip 3 detik</p></div>
           <span id="audio-status" class="badge" data-state="waiting">MENUNGGU</span>
         </header>
         <div class="panel-body">
           <div class="siren-output"><div><span class="result-label">Hasil model audio</span><strong id="siren-detected" class="siren-value">—</strong></div><span class="unit">SUMBER: MAX9814</span></div>
           <div class="probability-line"><span class="muted">Probabilitas sirene</span><span id="siren-probability">—</span></div>
           <div class="probability-track" aria-hidden="true"><span id="probability-fill"></span></div>
-          <p class="small-note">Keputusan sirene memerlukan dua jendela valid berturut-turut ≥ 0,80.</p>
+          <p class="small-note">Keputusan sirene memerlukan dua klip 3 detik valid berturut-turut dengan probabilitas gabungan ≥ 0,80.</p>
           <dl class="audio-details">
             <div class="metric"><dt>Hit berurutan</dt><dd id="consecutive-hits">—</dd></div>
             <div class="metric"><dt>Inferensi audio <span class="unit">ms</span></dt><dd id="audio-inference">—</dd></div>
@@ -251,7 +251,7 @@
           </div>
           <p id="spectrum-caption" class="small-note">Belum ada data spektrum. Sumbu frekuensi mengikuti data backend, bukan gelombang contoh.</p>
           <p id="audio-error" class="inline-error" role="status" hidden></p>
-          <div class="source-note"><strong>Model audio prototipe.</strong> Pelatihan/evaluasi sebelumnya menggunakan data sintetis; akurasi pada mikrofon nyata belum tervalidasi. Tidak menggunakan mikrofon laptop sebagai pengganti MAX9814.</div>
+          <div class="source-note"><strong>Model audio prototipe.</strong> Runtime memakai artefak lokal <code>siren_ast_v2</code>; akurasi pada mikrofon nyata belum tervalidasi. Tidak menggunakan mikrofon laptop sebagai pengganti MAX9814.</div>
         </div>
       </section>
     </div>
@@ -273,6 +273,11 @@
       </div>
     </section>
 
+    <section class="panel transport-panel" aria-label="Servo sirene">
+      <header class="panel-header"><h2>Servo otomatis dari sirene</h2><span id="servo-mode">NONAKTIF</span></header>
+      <div class="panel-body"><p id="servo-state">Menunggu telemetri ESP.</p><p id="servo-command">—</p>
+      <p class="small-note">Buka maksimal 5 detik → tutup → cooldown 10 detik. Syarat: sirene dua klip berturut-turut, confidence kelas ≥ 80%, sinyal tidak clipping. GPIO42: target tutup 90°, buka 110°. Status target dari ESP; posisi belum diukur. Uji meja tanpa palang.</p></div>
+    </section>
     <div class="bottom-grid">
       <section class="panel" aria-labelledby="serial-title">
         <header class="panel-header"><div><div class="panel-heading"><span class="section-number">04</span><h2 id="serial-title">Ringkasan Serial ESP</h2></div><p class="panel-description">Teks backend yang sama dengan balasan ke Arduino Serial Monitor</p></div></header>
@@ -490,6 +495,10 @@
     }
 
     function renderState(payload) {
+      const servo = payload.servo || {};
+      text('servo-mode', servo.enabled ? 'OTOMATIS AKTIF' : 'NONAKTIF');
+      text('servo-state', 'Status ESP: ' + (servo.state || 'unavailable'));
+      text('servo-command', 'Keputusan backend: ' + (servo.command || 'DISABLED'));
       const vision = payload.vision, audio = payload.audio, transport = payload.transport;
       let visionStatus = statusOf(vision, ['waiting', 'live', 'error', 'stale']);
       let audioStatus = statusOf(audio, ['waiting', 'buffering', 'live', 'error', 'stale']);
@@ -567,7 +576,7 @@
       text('serial-context', 'Teks diterima persis dari API; status sumber di atas menentukan apakah hasil masih aktif. Ini bukan konfirmasi penerimaan USB oleh ESP.');
       renderEvents(payload.events);
       // Liveness and a siren score never authorize access, even if a malformed
-      // response contains authorized=true. There is deliberately no gate action.
+      // response contains authorized=true. Servo bench state is reported separately.
       text('authorized', 'TIDAK DIBERIKAN');
       byId('authorized').dataset.authorized = 'false';
       lastResponseAt = Date.now();
@@ -578,6 +587,8 @@
     }
 
     function invalidate(state, message) {
+      text('servo-state', 'Telemetri tidak aktif');
+      text('servo-command', 'Keputusan terbaru belum tersedia');
       resetMetrics([...visionMetrics, ...audioMetrics, ...adcMetrics, ...transportMetrics]);
       const sourceState = state === 'paused' ? 'paused' : 'stale';
       badge('vision-status', sourceState, state === 'paused' ? 'DIJEDA' : 'TIDAK TERHUBUNG');

@@ -49,7 +49,8 @@ class DashboardUIContractTests(unittest.TestCase):
         self.assertIn("MENUNGGU", text)
         self.assertFalse(any(attrs.get("data-state") == "live" for _, attrs in markup.tags))
         self.assertIn("MAX9814", text)
-        self.assertIn("sintetis", text)
+        self.assertIn("Audio Spectrogram Transformer (AST)", text)
+        self.assertIn("akurasi pada mikrofon nyata belum tervalidasi", text)
         self.assertIn("bukan verifikasi identitas", text)
 
     def test_no_remote_dependencies_or_html_injection_sinks(self):

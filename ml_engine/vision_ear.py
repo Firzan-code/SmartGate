@@ -8,6 +8,7 @@ process_frame harus dipanggil satu producer; get_state/get_jpeg_frame aman
 untuk consumer lain. Semua input dan output kamera tetap lokal.
 """
 
+import math
 import threading
 import time
 from collections import deque
@@ -311,7 +312,17 @@ class EARLivenessDetector:
         if not isinstance(frame_bgr, np.ndarray) or frame_bgr.dtype != np.uint8 or frame_bgr.ndim != 3 or frame_bgr.shape[2] != 3 or min(frame_bgr.shape[:2]) < 1:
             raise ValueError("Frame harus berupa gambar BGR uint8 H x W x 3")
         t0 = time.perf_counter()
-        self._frame_clock = time.monotonic() if timestamp is None else float(timestamp)
+        if timestamp is None:
+            self._frame_clock = time.monotonic()
+            # Some Windows Python builds expose a 15.625 ms monotonic clock.
+            # Two real frames can therefore receive the same tick even though
+            # this single-producer pipeline processed them in order. Preserve
+            # strict ordering without inventing a measurable blink duration.
+            last_timestamp = self._blink.last_timestamp
+            if last_timestamp is not None and self._frame_clock == last_timestamp:
+                self._frame_clock = math.nextafter(last_timestamp, math.inf)
+        else:
+            self._frame_clock = float(timestamp)
         landmarks = self._extract_landmarks_xy(frame_bgr)
         has_face = landmarks is not None and len(landmarks) > max(LEFT_EYE_INDICES + RIGHT_EYE_INDICES)
         if has_face:

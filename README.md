@@ -1,5 +1,25 @@
 # SmartGate — demo dua model untuk tugas IoT
 
+## Integrasi sirene dan servo (demo meja)
+
+Firmware utama `tes_dua_model_esp32s3.ino` sekarang menggabungkan MAX9814 dan SG90 GPIO42.
+Jalankan `.venv\Scripts\python.exe run_dashboard.py --enable-servo` setelah wiring dan catu diperiksa.
+Default launcher tetap observasi. Servo boot tanpa PWM; hasil audio valid HOLD menargetkan 90°.
+Sirene dua klip berturut-turut, confidence kelas minimal 0,80, dan ADC tidak clipping
+memicu target 110°. ESP membatasi bukaan 5 detik, kemudian target 90° dan cooldown 10 detik.
+Sirene terus-menerus tidak memperpanjang bukaan; diperlukan hasil HOLD setelah bukaan untuk pemicu berikutnya.
+Data basi menutup bukaan dan membatalkan pemicu. Hilang balasan selama 3 detik juga menutup di ESP.
+Mode DISABLED melepas PWM; ini tidak memutus catu servo atau menjamin posisi mekanik.
+Boot ID dan nomor paket mencegah perintah lama/duplikat; protokol ini belum memakai autentikasi kriptografis.
+Dashboard menampilkan status target dari ESP; tidak ada sensor posisi atau penghalang.
+Gunakan tanpa horn/palang untuk demo. Uraian servo terpisah di bawah adalah mode lama.
+
+Status uji perangkat 16 November 2026: audio MAX9814, inferensi AST, kamera dan
+telemetri ESP berhasil berjalan bersama. Pengguna melaporkan servo berputar terus
+saat target tetap CLOSED/90°. Tipe servo dan catu belum terverifikasi; gerak fisik
+buka–tutup belum dinyatakan berhasil. Mode otomatis dinonaktifkan dan firmware
+DISABLED melepas PWM. Pastikan tipe positional serta catu sebelum uji gerak berikutnya.
+
 SmartGate sedang dikembangkan menjadi prototipe gerbang pintar. **Demo utama mengamati kamera dan suara; sekarang tersedia juga demo meja SG90 terpisah: wajah + kedua mata terbuka terus 5 detik memicu satu gerakan.** Ini bukan pengenal identitas atau sistem gerbang aman.
 
 ## Baru: demo servo SG90 sederhana
@@ -20,7 +40,7 @@ Ada dua jalur pengolahan:
 
 Hasil keduanya tampil di dashboard dan dikirim kembali ke ESP untuk dicetak di Arduino Serial Monitor. Python **tidak memakai port COM**, jadi Serial Monitor boleh tetap terbuka.
 
-> **Penting untuk presentasi:** kedipan bukan pengenal identitas. Model sirene masih dilatih dari data sintetis. Kelulusan tes software belum membuktikan akurasi suara nyata atau kestabilan board setelah perbaikan terbaru.
+> **Penting untuk presentasi:** kedipan bukan pengenal identitas. Runtime sirene memakai artefak AST ONNX lokal, tetapi kelulusan tes software belum membuktikan akurasi suara nyata atau kestabilan board setelah perbaikan terbaru.
 
 ## Protokol komunikasi: MQTT atau HTTP?
 
@@ -57,14 +77,14 @@ MAX9814 --> ESP32-S3 ADC --> Wi-Fi --> model sirene --+--> Dashboard laptop
                                                    +--> Wi-Fi --> ESP --> Serial Monitor
 ```
 
-**EAR** adalah rasio bukaan kelopak terhadap lebar mata. **ADC** mengubah tegangan suara menjadi angka. **STFT/MFCC** merangkum pola frekuensi suara menjadi fitur yang dibaca model.
+**EAR** adalah rasio bukaan kelopak terhadap lebar mata. **ADC** mengubah tegangan suara menjadi angka. Model **Audio Spectrogram Transformer (AST)** membaca representasi log-mel dari klip audio 3 detik.
 
 ## Progres saat ini
 
 | Bagian | Kondisi |
 |---|---|
 | Vision wajah, EAR, status mata dan hitung kedipan | Kode tersedia; tes logika dan uji webcam awal telah dilakukan. Validasi dua kedipan pada berbagai orang/kondisi belum selesai. |
-| Model sirene Random Forest | Model dan kode training tersedia; evaluasi awal menggunakan data sintetis. |
+| Model sirene AST ONNX (`siren_ast_v2`) | Runtime dan kontrak softmax tiga kelas tersedia; akurasi pada suara MAX9814 nyata belum tervalidasi. |
 | Dashboard Python/Flask | Sudah dibuat, termasuk status menunggu, buffering, aktif, basi dan error. |
 | ESP32-S3: ADC DMA + kirim suara Wi-Fi | Firmware tersedia dalam **satu `.ino`**; kompilasi dan simulasi software lolos. |
 | Masalah ESP restart | Penyebab ADC lintas task sudah diperbaiki dan diuji software. **Uji ulang pada board fisik masih diperlukan.** |
@@ -92,7 +112,7 @@ py -3.11 -m venv .venv
 .venv\Scripts\python.exe scripts\download_models.py
 ```
 
-Model sirene sudah ada di `ml_engine/models/siren_rf_model.pkl`, jadi **tidak perlu training ulang untuk menjalankan demo**. Model wajah diunduh dari Google melalui skrip resmi proyek dengan pemeriksaan ukuran dan SHA256. Unduhan model dan instalasi pertama memerlukan Internet; kamera tidak dikirim ke Google.
+Letakkan folder model `siren_ast_v2` di `ml_engine/models/siren_ast_v2`, atau arahkan variabel lingkungan `SMARTGATE_AST_MODEL_DIR` ke folder tersebut. Artefak utama bernama `siren_ast_fp16.onnx`; tidak perlu training ulang untuk menjalankan demo. Model wajah diunduh dari Google melalui skrip resmi proyek dengan pemeriksaan ukuran dan SHA256. Unduhan model dan instalasi pertama memerlukan Internet; kamera tidak dikirim ke Google.
 
 Jika `py -3.11` tidak ditemukan, pasang Python 3.11 terlebih dahulu. Gunakan `python -m pip` dari interpreter yang sama, jangan `pip` yang mungkin milik Python lain.
 

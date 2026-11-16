@@ -121,6 +121,16 @@ class TestFrameIntegration(unittest.TestCase):
         decoded = cv2.imdecode(np.frombuffer(detector.get_jpeg_frame(), np.uint8), cv2.IMREAD_COLOR)
         self.assertEqual(decoded.shape, rendered.shape)
 
+    def test_coarse_runtime_clock_does_not_reject_a_new_frame(self):
+        with patch.object(vision.EARLivenessDetector, '_init_mediapipe'):
+            detector = vision.EARLivenessDetector()
+        frame = np.full((120, 160, 3), 40, dtype=np.uint8)
+        with patch.object(detector, '_extract_landmarks_xy', return_value=landmark_fixture()), \
+                patch.object(vision.time, 'monotonic', return_value=10.0):
+            detector.process_frame(frame)
+            detector.process_frame(frame)
+        self.assertGreater(detector._blink.last_timestamp, 10.0)
+
 
 class TestTimedBlink(unittest.TestCase):
     def test_rejects_wink_short_noise_and_long_closure(self):

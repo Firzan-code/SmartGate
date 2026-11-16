@@ -121,6 +121,50 @@ static void reply_timeout_wrap() {
   CHECK(clock.stale(0));
 }
 
+static void actuator_command_parser_is_exact() {
+  using dual::ActuatorCommand;
+  CHECK(dual::parseActuatorCommand("SGR1 SUARA=SIRENE AKTUATOR=OPEN") == ActuatorCommand::open);
+  CHECK(dual::parseActuatorCommand("SGR1 AKTUATOR=HOLD X=1") == ActuatorCommand::hold);
+  CHECK(dual::parseActuatorCommand("SGR1 AKTUATOR=DISABLED") == ActuatorCommand::disable);
+  CHECK(dual::parseActuatorCommand("SGR1 AKTUATOR=OPENED") == ActuatorCommand::unknown);
+  CHECK(dual::parseActuatorCommand("SGR1 XAKTUATOR=OPEN") == ActuatorCommand::unknown);
+  CHECK(dual::parseActuatorCommand("SGR1 SUARA=SIRENE") == ActuatorCommand::unknown);
+  CHECK(dual::parseActuatorCommand(nullptr) == ActuatorCommand::unknown);
+}
+
+static void servo_policy_timeout_cooldown_and_clear() {
+  using dual::ActuatorCommand; using dual::ServoAction; using dual::ServoState;
+  dual::ServoPolicy policy(5000, 10000);
+  CHECK(policy.start(10) == ServoAction::none && policy.state() == ServoState::disabled);
+  CHECK(policy.command(11, ActuatorCommand::open) == ServoAction::none);
+  CHECK(policy.command(12, ActuatorCommand::hold) == ServoAction::close);
+  CHECK(policy.state() == ServoState::closed);
+  CHECK(policy.command(13, ActuatorCommand::open) == ServoAction::open);
+  CHECK(policy.command(14, ActuatorCommand::open) == ServoAction::none);
+  CHECK(policy.tick(5012, true) == ServoAction::none);
+  CHECK(policy.tick(5013, true) == ServoAction::close && policy.state() == ServoState::cooldown);
+  CHECK(policy.command(5014, ActuatorCommand::open) == ServoAction::none);
+  CHECK(policy.command(5015, ActuatorCommand::hold) == ServoAction::none);
+  CHECK(policy.tick(15012, true) == ServoAction::none && policy.state() == ServoState::cooldown);
+  CHECK(policy.tick(15013, true) == ServoAction::none && policy.state() == ServoState::closed);
+  CHECK(policy.command(15014, ActuatorCommand::open) == ServoAction::open);
+  CHECK(policy.command(15015, ActuatorCommand::disable) == ServoAction::release);
+  CHECK(policy.state() == ServoState::disabled);
+}
+
+static void servo_policy_link_loss_fault_and_wrap() {
+  using dual::ActuatorCommand; using dual::ServoAction; using dual::ServoState;
+  dual::ServoPolicy policy(5000, 10000);
+  policy.start(UINT32_MAX - 100); policy.command(UINT32_MAX - 99, ActuatorCommand::hold);
+  CHECK(policy.command(UINT32_MAX - 98, ActuatorCommand::open) == ServoAction::open);
+  CHECK(policy.tick(4900, true) == ServoAction::none);
+  CHECK(policy.tick(4901, false) == ServoAction::close);
+  CHECK(policy.fault(4902) == ServoAction::release && policy.state() == ServoState::error);
+  CHECK(policy.command(4903, ActuatorCommand::hold) == ServoAction::none);
+  CHECK((policy.telemetryFlags() & dual::kServoPresent) != 0);
+  CHECK(((policy.telemetryFlags() & dual::kServoStateMask) >> dual::kServoStateShift) == 4);
+}
+
 static void invalid_after_live_marks_discontinuity() {
   dual::Packetizer p(8); std::vector<dual::AudioPacket> packets;
   auto sink = [&](const dual::AudioPacket &v) { packets.push_back(v); return true; };
@@ -133,6 +177,9 @@ static void invalid_after_live_marks_discontinuity() {
 
 struct Test { const char *name; void (*run)(); };
 static const Test cases[] = {
+  {"servo_policy_link_loss_fault_and_wrap", servo_policy_link_loss_fault_and_wrap},
+  {"servo_policy_timeout_cooldown_and_clear", servo_policy_timeout_cooldown_and_clear},
+  {"actuator_command_parser_is_exact", actuator_command_parser_is_exact},
   {"invalid_after_live_marks_discontinuity", invalid_after_live_marks_discontinuity},
   {"reply_timeout_wrap", reply_timeout_wrap},
   {"reply_rejects_bad_frames", reply_rejects_bad_frames},

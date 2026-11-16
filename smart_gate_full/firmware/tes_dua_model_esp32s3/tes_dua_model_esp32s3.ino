@@ -4,6 +4,19 @@
  * MAX9814: VDD=3V3, GND=GND, OUT=GPIO1. Serial Monitor=115200.
  * Jangan bagikan file/screenshot yang masih berisi password Wi-Fi asli.
  */
+// Arduino CLI on Windows can provision simple token-safe credentials without
+// nesting quoted strings through PowerShell -> CLI -> compiler recipes.
+#define SMARTGATE_STRINGIFY_INNER(value) #value
+#define SMARTGATE_STRINGIFY(value) SMARTGATE_STRINGIFY_INNER(value)
+#ifdef SMARTGATE_WIFI_SSID_TOKEN
+#define WIFI_SSID SMARTGATE_STRINGIFY(SMARTGATE_WIFI_SSID_TOKEN)
+#endif
+#ifdef SMARTGATE_WIFI_PASSWORD_TOKEN
+#define WIFI_PASSWORD SMARTGATE_STRINGIFY(SMARTGATE_WIFI_PASSWORD_TOKEN)
+#endif
+#ifdef SMARTGATE_SERVER_IP_TOKEN
+#define SERVER_IP SMARTGATE_STRINGIFY(SMARTGATE_SERVER_IP_TOKEN)
+#endif
 #ifndef WIFI_SSID
 #define WIFI_SSID ""
 #endif
@@ -29,6 +42,9 @@ constexpr size_t kSampleCount = 320;
 constexpr size_t kHeaderBytes = 20;
 constexpr size_t kPacketBytes = kHeaderBytes + 2 * kSampleCount;
 constexpr uint16_t kDiscontinuity = 1;
+constexpr uint16_t kServoPresent = 1u << 1;
+constexpr uint16_t kServoStateShift = 2;
+constexpr uint16_t kServoStateMask = 7u << kServoStateShift;
 
 // Serialize explicitly: neither compiler padding nor host byte order is on wire.
 struct AudioPacket {
@@ -39,6 +55,9 @@ static_assert(sizeof(AudioPacket) == 660, "SGA1 packet must be 660 bytes");
 inline void put16(uint8_t *out, uint16_t value) {
   out[0] = static_cast<uint8_t>(value);
   out[1] = static_cast<uint8_t>(value >> 8);
+}
+inline uint16_t get16(const uint8_t *in) {
+  return static_cast<uint16_t>(in[0]) | static_cast<uint16_t>(in[1]) << 8;
 }
 inline void put32(uint8_t *out, uint32_t value) {
   put16(out, static_cast<uint16_t>(value));
@@ -89,6 +108,93 @@ class ReplyClock {
   bool seen_ = false;
 };
 
+enum class ActuatorCommand : uint8_t { unknown, hold, open, disable };
+enum class ServoState : uint8_t { disabled = 0, closed = 1, open = 2, cooldown = 3, error = 4 };
+enum class ServoAction : uint8_t { none, close, open, release };
+
+inline ActuatorCommand parseActuatorCommand(const char *text) {
+  if (!text) return ActuatorCommand::unknown;
+  const char *token = strstr(text, "AKTUATOR=");
+  if (!token) return ActuatorCommand::unknown;
+  if (token != text && token[-1] != ' ') return ActuatorCommand::unknown;
+  if (strstr(token + 9, "AKTUATOR=")) return ActuatorCommand::unknown;
+  token += 9;
+  const auto exact = [token](const char *value) {
+    const size_t n = strlen(value);
+    return strncmp(token, value, n) == 0 && (token[n] == '\0' || token[n] == ' ');
+  };
+  if (exact("HOLD")) return ActuatorCommand::hold;
+  if (exact("OPEN")) return ActuatorCommand::open;
+  if (exact("DISABLED")) return ActuatorCommand::disable;
+  return ActuatorCommand::unknown;
+}
+
+class ServoPolicy {
+ public:
+  ServoPolicy(uint32_t open_ms = 5000, uint32_t cooldown_ms = 10000)
+      : open_ms_(open_ms), cooldown_ms_(cooldown_ms) {}
+
+  ServoAction start(uint32_t now) {
+    state_ = ServoState::disabled; state_at_ = now; cleared_ = true;
+    return ServoAction::none;
+  }
+  ServoAction command(uint32_t now, ActuatorCommand command) {
+    const ServoAction timed = tick(now, true);
+    if (timed != ServoAction::none) return timed;
+    if (state_ == ServoState::error) return ServoAction::none;
+    if (command == ActuatorCommand::unknown) {
+      cleared_ = false;
+      return tick(now, false);
+    }
+    if (command == ActuatorCommand::disable) {
+      cleared_ = true;
+      if (state_ != ServoState::disabled) {
+        state_ = ServoState::disabled; state_at_ = now; return ServoAction::release;
+      }
+      return ServoAction::none;
+    }
+    if (command == ActuatorCommand::hold) {
+      if (state_ != ServoState::open) cleared_ = true;
+      if (state_ == ServoState::disabled) {
+        state_ = ServoState::closed; state_at_ = now; return ServoAction::close;
+      }
+      if (state_ == ServoState::cooldown && elapsed(now) >= cooldown_ms_) {
+        state_ = ServoState::closed; state_at_ = now;
+      }
+      return ServoAction::none;
+    }
+    if (command == ActuatorCommand::open && state_ == ServoState::closed && cleared_) {
+      state_ = ServoState::open; state_at_ = now; cleared_ = false;
+      return ServoAction::open;
+    }
+    return ServoAction::none;
+  }
+  ServoAction tick(uint32_t now, bool link_fresh) {
+    if (state_ == ServoState::open && (!link_fresh || elapsed(now) >= open_ms_)) {
+      state_ = ServoState::cooldown; state_at_ = now;
+      return ServoAction::close;
+    }
+    if (state_ == ServoState::cooldown && elapsed(now) >= cooldown_ms_ && cleared_) {
+      state_ = ServoState::closed; state_at_ = now;
+    }
+    return ServoAction::none;
+  }
+  ServoAction fault(uint32_t now) {
+    state_ = ServoState::error; state_at_ = now; cleared_ = false;
+    return ServoAction::release;
+  }
+  ServoState state() const { return state_; }
+  uint16_t telemetryFlags() const {
+    return kServoPresent | (static_cast<uint16_t>(state_) << kServoStateShift);
+  }
+
+ private:
+  uint32_t elapsed(uint32_t now) const { return static_cast<uint32_t>(now - state_at_); }
+  uint32_t open_ms_, cooldown_ms_, state_at_ = 0;
+  ServoState state_ = ServoState::disabled;
+  bool cleared_ = true;
+};
+
 inline bool parseReply(const uint8_t *bytes, size_t length, char *out, size_t capacity) {
   if (!bytes || !out || length < 6 || length > 512 || length >= capacity ||
       memcmp(bytes, "SGR1 ", 5) != 0) return false;
@@ -127,6 +233,11 @@ static_assert(SOC_ADC_DIGI_RESULT_BYTES == sizeof(adc_digi_output_data_t), "TYPE
 namespace dual_fw {
 constexpr uint32_t kFrameBytes = dual::kSampleCount * SOC_ADC_DIGI_RESULT_BYTES;
 constexpr unsigned kQueuePackets = 6;
+constexpr uint8_t kServoPin = 42;
+constexpr uint16_t kServoClosedDegrees = 90, kServoOpenDegrees = 110;
+constexpr uint32_t kServoOpenMs = 5000, kServoCooldownMs = 10000;
+constexpr uint32_t kServoPwmFrequency = 50;
+constexpr uint8_t kServoPwmBits = 14;
 struct QueuedAudio { dual::AudioPacket packet; uint32_t capturedAt; uint32_t epoch; };
 inline QueueHandle_t audioQueue = nullptr;
 inline TaskHandle_t acquisitionHandle = nullptr;
@@ -143,7 +254,43 @@ inline size_t serialLength = 0, serialOffset = 0;
 inline bool serialIsSummary = false;
 inline uint32_t summaryQueuedAt = 0, summaryEpoch = 0;
 inline dual::ReplyClock replyClock;
+inline dual::ServoPolicy servoPolicy(kServoOpenMs, kServoCooldownMs);
+inline bool servoAttached = false;
+inline uint32_t deviceBoot = 0, lastTxSequence = 0, lastCommandSequence = 0;
+inline bool hasTx = false, hasCommandSequence = false;
+inline bool readCommandNumber(const char *text, const char *key, uint32_t &out) {
+  const char *p = strstr(text, key);
+  if (!p || (p != text && p[-1] != ' ') || strstr(p + strlen(key), key)) return false;
+  p += strlen(key); uint64_t value = 0; unsigned digits = 0;
+  while (*p >= '0' && *p <= '9') {
+    value = value * 10 + static_cast<unsigned>(*p++ - '0');
+    if (++digits > 10 || value > UINT32_MAX) return false;
+  }
+  if (!digits || (*p && *p != ' ')) return false;
+  out = static_cast<uint32_t>(value); return true;
+}
 inline uint32_t networkEpoch = 0;
+inline void releaseServoSignal() {
+  if (servoAttached) { ledcDetach(kServoPin); servoAttached = false; }
+  pinMode(kServoPin, OUTPUT); digitalWrite(kServoPin, LOW);
+}
+inline bool targetServo(uint16_t degrees) {
+  if (!servoAttached) {
+    if (!ledcAttach(kServoPin, kServoPwmFrequency, kServoPwmBits)) return false;
+    servoAttached = true;
+  }
+  const uint32_t pulseUs = 1000u + uint32_t(degrees) * 1000u / 180u;
+  const uint32_t duty = (pulseUs * ((1u << kServoPwmBits) - 1u) + 10000u) / 20000u;
+  return ledcWrite(kServoPin, duty);
+}
+inline bool applyServoAction(dual::ServoAction action) {
+  if (action == dual::ServoAction::none) return true;
+  if (action == dual::ServoAction::release) { releaseServoSignal(); return true; }
+  const uint16_t degrees = action == dual::ServoAction::open ? kServoOpenDegrees : kServoClosedDegrees;
+  if (targetServo(degrees)) return true;
+  servoPolicy.fault(millis()); releaseServoSignal();
+  return false;
+}
 inline void message(const char *text) {
   serialIsSummary = false;
   serialLength = strlen(text);
@@ -322,11 +469,12 @@ inline bool initAdc() {
 }
 inline void setupFirmware() {
   Serial.begin(115200);
+  releaseServoSignal(); servoPolicy.start(millis());
   if (!WIFI_SSID[0] || !ipv4(serverAddress)) {
     configMissing = true; lastConfig = millis();
     message("CONFIG: isi WIFI_SSID/WIFI_PASSWORD/SERVER_IP di bagian atas sketch"); pumpSerial(); return;
   }
-  packetizer = dual::Packetizer(esp_random());
+  deviceBoot = esp_random(); packetizer = dual::Packetizer(deviceBoot);
   // setup/loopTask must never start or stop ADC: acquisitionTask owns its lifecycle.
   if (xTaskCreatePinnedToCore(acquisitionTask, "max9814-dma", 4096, nullptr, 3, &acquisitionHandle, 1) != pdPASS) {
     fail("acquisition task", ESP_FAIL);
@@ -361,10 +509,18 @@ inline void sendAudio() {
       static_cast<uint32_t>(millis() - q.capturedAt) > 150) {
     txDiscontinuity = true; return;
   }
-  if (txDiscontinuity) dual::put16(q.packet.bytes + 18, dual::kDiscontinuity);
+  uint16_t flags = dual::get16(q.packet.bytes + 18) & dual::kDiscontinuity;
+  if (txDiscontinuity) flags |= dual::kDiscontinuity;
+  flags |= servoPolicy.telemetryFlags();
+  dual::put16(q.packet.bytes + 18, flags);
   const int sent = sendto(udp, q.packet.bytes, sizeof(q.packet.bytes), MSG_DONTWAIT,
                           reinterpret_cast<const sockaddr *>(&server), sizeof(server));
   txDiscontinuity = sent != static_cast<int>(sizeof(q.packet.bytes));
+  if (!txDiscontinuity) {
+    lastTxSequence = uint32_t(q.packet.bytes[8]) | uint32_t(q.packet.bytes[9]) << 8 |
+                     uint32_t(q.packet.bytes[10]) << 16 | uint32_t(q.packet.bytes[11]) << 24;
+    hasTx = true;
+  }
   if (txDiscontinuity && (!sendErrorShown || static_cast<uint32_t>(millis() - lastSendError) >= 1000)) {
     sendErrorShown = true; lastSendError = millis(); message("ERROR UDP send / audio terputus");
   }
@@ -401,6 +557,7 @@ inline void receiveReplies() {
       peer.sin_addr.s_addr == server.sin_addr.s_addr && dual::parseReply(bytes, static_cast<size_t>(n), text, sizeof(text))) {
     // recvfrom/parse run without the ADC lock; commit only to the same live source.
     const uint32_t now = millis();
+    bool committed = false;
     portENTER_CRITICAL(&stateMux);
     if (shared.fatal || shared.overflow || shared.linkLost || shared.epoch != source.epoch ||
         source.epoch != networkEpoch) {
@@ -411,7 +568,16 @@ inline void receiveReplies() {
       summaryPrinted = true; lastSummary = now; message(text);
       serialIsSummary = true; summaryQueuedAt = now; summaryEpoch = source.epoch;
     }
+    committed = true;
     portEXIT_CRITICAL(&stateMux);
+    uint32_t boot = 0, sequence = 0;
+    if (committed && hasTx && readCommandNumber(text, "BOOT=", boot) && boot == deviceBoot &&
+        readCommandNumber(text, "SEQ=", sequence) && uint32_t(lastTxSequence - sequence) <= 25 &&
+        (!hasCommandSequence || (uint32_t(sequence - lastCommandSequence) > 0 &&
+                                 uint32_t(sequence - lastCommandSequence) < 0x80000000u))) {
+      hasCommandSequence = true; lastCommandSequence = sequence;
+      applyServoAction(servoPolicy.command(now, dual::parseActuatorCommand(text)));
+    }
   }
 }
 inline void onWifiEvent(arduino_event_id_t) {
@@ -475,6 +641,7 @@ inline void loopFirmware() {
   }
   if (active && !snapshot().fatal) {
     networkStep();
+    applyServoAction(servoPolicy.tick(millis(), connected && udp >= 0 && !replyClock.stale(millis())));
     if (replyClock.stale(millis()) && (!staleWarning ||
         static_cast<uint32_t>(millis() - lastStaleWarning) >= 3000)) {
       staleWarning = true; lastStaleWarning = millis();
@@ -483,6 +650,7 @@ inline void loopFirmware() {
   }
   if (snapshot().fatal && !fatalReported) {
     fatalReported = true; closeUdp(); replyClock.clear();
+    applyServoAction(servoPolicy.command(millis(), dual::ActuatorCommand::disable));
     char text[160]; const Shared s = snapshot();
     snprintf(text, sizeof(text), "ERROR %s code=%d; audio tidak aktif", s.error ? s.error : "firmware", static_cast<int>(s.code));
     message(text);

@@ -136,7 +136,7 @@ static void reconnect_discards_pending() {
  fake::frame(); fake::runTaskSlice(); // recovery must flush this buffered frame
  CHECK(fake::flushes==1 && dual_fw::audioQueue->data.empty());
  fake::frame(); fake::runTaskSlice(); loop();
- CHECK(fake::sent.size()==1 && fake::sent.back()[18]==1);
+ CHECK(fake::sent.size()==1 && (fake::sent.back()[18]&1)==1);
  fake::wifiStatus=WL_DISCONNECTED; loop();
  fake::frame(); fake::runTaskSlice();
  fake::wifiStatus=WL_CONNECTED; loop();
@@ -149,7 +149,7 @@ static void send_failure_flags_next_packet() {
  fake::frame(); fake::runTaskSlice(); fake::sendResult=-1; loop();
  fake::frame(); fake::runTaskSlice(); fake::sendResult=660; loop();
  CHECK(fake::sent.size()==2);
- CHECK(fake::sent.back()[8]==2 && fake::sent.back()[18]==1);
+ CHECK(fake::sent.back()[8]==2 && (fake::sent.back()[18]&1)==1);
 }
 
 static void queued_audio_expires() {
@@ -158,7 +158,7 @@ static void queued_audio_expires() {
  fake::now+=151; loop();
  CHECK(fake::sent.empty());
  fake::runTaskSlice(); fake::frame(); fake::runTaskSlice(); loop();
- CHECK(fake::sent.size()==1 && fake::sent.back()[18]==1);
+ CHECK(fake::sent.size()==1 && (fake::sent.back()[18]&1)==1);
 }
 
 static void enqueue_reply(const std::string &text, uint32_t ip=htonl(0xc0000201U), uint16_t port=5006) {
@@ -438,7 +438,7 @@ static void short_send_cannot_succeed() {
  fake::frame(); fake::runTaskSlice(); fake::sendResult=659; loop();
  CHECK(fake::sent.empty());
  fake::frame(); fake::runTaskSlice(); fake::sendResult=660; loop();
- CHECK(fake::sent.size()==1 && fake::sent.back()[8]==1 && fake::sent.back()[18]==1);
+ CHECK(fake::sent.size()==1 && fake::sent.back()[8]==1 && (fake::sent.back()[18]&1)==1);
 }
 
 static void link_flicker_diagnostics_bounded() {
@@ -604,7 +604,26 @@ static void adc_recovery_keeps_start_stop_owner() {
 }
 
 struct Test { const char *name; void (*run)(); };
+static void integrated_servo_commands_and_timer() {
+ setup(); CHECK(fake::ledcWriteCalls==0);
+ fake::wifiStatus=WL_CONNECTED; loop(); fake::runTaskSlice(); loop();
+ fake::frame(); fake::runTaskSlice(); loop();
+ CHECK((fake::sent.back()[18]&dual::kServoPresent)!=0);
+ enqueue_reply("SGR1 AKTUATOR=HOLD BOOT=305419896 SEQ=0"); loop();
+ CHECK(dual_fw::servoPolicy.state()==dual::ServoState::closed);
+ CHECK(fake::lastPin==42 && fake::ledcWriteCalls==1);
+ enqueue_reply("SGR1 AKTUATOR=OPEN BOOT=305419896 SEQ=0"); loop();
+ CHECK(fake::ledcWriteCalls==1); // duplicate packet cannot move
+ fake::frame(); fake::runTaskSlice(); loop();
+ enqueue_reply("SGR1 AKTUATOR=OPEN BOOT=305419896 SEQ=1"); loop();
+ CHECK(dual_fw::servoPolicy.state()==dual::ServoState::open);
+ CHECK(fake::ledcWriteCalls==2);
+ fake::now+=5000; loop();
+ CHECK(dual_fw::servoPolicy.state()==dual::ServoState::cooldown);
+ CHECK(fake::ledcWriteCalls==3);
+}
 static const Test cases[] = {
+ {"integrated_servo_commands_and_timer", integrated_servo_commands_and_timer},
  {"adc_startup_waits_for_owner_task", adc_startup_waits_for_owner_task},
  {"adc_reconnect_and_fatal_keep_owner", adc_reconnect_and_fatal_keep_owner},
  {"adc_recovery_keeps_start_stop_owner", adc_recovery_keeps_start_stop_owner},

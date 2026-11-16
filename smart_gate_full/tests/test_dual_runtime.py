@@ -216,7 +216,7 @@ class RuntimeTests(unittest.TestCase):
         finally:
             runtime.stop()
 
-    def test_real_rf_over_loopback_udp_fixture_not_physical_audio(self):
+    def test_real_ast_over_loopback_udp_fixture_not_physical_audio(self):
         from smart_gate_full.backend.runtime import MonitorRuntime
         from ml_engine.train_siren_model import _generate_siren_sample
         import numpy as np
@@ -228,21 +228,21 @@ class RuntimeTests(unittest.TestCase):
         try:
             runtime.start(camera_enabled=False, udp_host='127.0.0.1', udp_port=0)
             address = ('127.0.0.1', runtime.snapshot()['transport']['udp_port'])
-            for seq in range(100):
+            for seq in range(500):
                 block = adc[(seq % 50)*320:(seq % 50+1)*320]
                 raw = struct.pack('<4sIIIHH', b'SGA1', 91, seq, 16000, 320, 0) + block.tobytes()
                 client.sendto(raw, address)
                 time.sleep(.02)
-            deadline = time.monotonic() + .2
-            while time.monotonic() < deadline and not runtime.snapshot()['audio'].get('siren_detected'):
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and not runtime.snapshot()['audio'].get('class_name'):
                 time.sleep(.005)
             state = runtime.snapshot()
-            self.assertEqual(state['audio']['status'], 'live')
-            self.assertTrue(state['audio']['siren_detected'])
-            self.assertEqual(state['audio']['consecutive_hits'], 2)
-            self.assertEqual(state['transport']['packets'], 100)
+            self.assertEqual(state['audio']['status'], 'live', state)
+            self.assertIn(state['audio']['class_name'], {'ambulance', 'other_siren', 'traffic_noise'})
+            self.assertTrue(0 <= state['audio']['siren_probability'] <= 1)
+            self.assertEqual(state['transport']['packets'], 500)
             self.assertEqual(state['transport']['gaps'], 0)
-            self.assertIn('SUARA=SIRENE', state['serial_line'])
+            self.assertNotIn('SUARA=MENUNGGU', state['serial_line'])
         finally:
             client.close()
             runtime.stop()

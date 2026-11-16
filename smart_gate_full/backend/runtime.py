@@ -22,7 +22,8 @@ def serial_summary(state):
 
 
 class MonitorRuntime:
-    def __init__(self):
+    def __init__(self, servo_enabled=False):
+        self.servo_enabled = servo_enabled
         self._lock = threading.RLock()
         self._stream = AudioStream()
         self._events = deque(maxlen=40)
@@ -43,6 +44,8 @@ class MonitorRuntime:
         self._socket = None
         self._threads = []
         self._stop = threading.Event()
+        # Keep a small bounded runway so startup CPU scheduling cannot discard
+        # complete classifier windows while inference is still running.
         self._pending = queue.Queue(maxsize=1)
         self._classifier = None
         self._started = False
@@ -73,13 +76,25 @@ class MonitorRuntime:
                     audio['status'] = status
                 elif self._audio_generation != self._stream.generation or self._audio_at is None:
                     audio['status'] = 'buffering'
-                elif now - self._audio_at > 1.5:
+                elif now - self._audio_at > getattr(self._classifier, 'max_result_age_sec', 1.5):
                     audio['status'] = 'stale'
                 if audio['status'] != 'live':
                     audio.update(siren_detected=None, siren_probability=None, consecutive_hits=0,
                                  spectrum_freqs_hz=[], spectrum_magnitudes=[])
             state = {'vision': vision, 'audio': audio, 'transport': transport,
                      'events': list(self._events), 'authorized': False}
+            command = 'DISABLED'
+            if self.servo_enabled and self._stream.servo_present:
+                command = 'HOLD' if audio['status'] == 'live' else 'INVALID'
+                if (audio['status'] == 'live' and audio.get('siren_detected') is True
+                        and not audio.get('clipped', True)
+                        and audio.get('class_probability', 0) >= .80):
+                    command = 'OPEN'
+            state['servo'] = {'enabled': self.servo_enabled, 'command': command,
+                              'state': self._stream.servo_state if transport['status'] == 'live' else 'unavailable',
+                              'open_seconds': 5, 'cooldown_seconds': 10,
+                              'closed_degrees': 90, 'open_degrees': 110,
+                              'position_measured': False}
             state['serial_line'] = serial_summary(state)
             return state
 
@@ -111,6 +126,14 @@ class MonitorRuntime:
                 self._classifier = AudioClassifier()
             except Exception as exc:
                 self._audio_error(f'{type(exc).__name__}: {exc}')
+        window_samples = getattr(self._classifier, 'window_samples', 16000)
+        hop_packets = getattr(self._classifier, 'hop_packets', 25)
+        if (not isinstance(window_samples, int) or window_samples < 320
+                or window_samples % 320 or not isinstance(hop_packets, int)):
+            self._audio_error('Kontrak window classifier audio invalid')
+            self._classifier = None
+        else:
+            self._stream = AudioStream(window_samples // 320, hop_packets)
         jobs = [('audio-network', self._receive_loop), ('audio-inference', self._infer_loop)]
         if camera_enabled:
             jobs.append(('vision-init', lambda: self._start_camera(camera_index, camera_backend)))
@@ -174,6 +197,11 @@ class MonitorRuntime:
                 with self._lock:
                     previous = self._stream.packets
                     window = self._stream.push(packet, peer, now)
+                    if self._stream.packets > previous and packet.servo_present:
+                        servo_event = (packet.boot_id, packet.servo_state)
+                        if servo_event != getattr(self, '_last_servo_event', None):
+                            self._last_servo_event = servo_event
+                            self._event('Servo ESP: ' + packet.servo_state + ' (target, posisi belum diukur)')
                     if previous == 0 and self._stream.packets:
                         self._event(f'Audio terhubung dari {peer[0]}:{peer[1]}')
                 if window is not None and self._classifier is not None:
@@ -202,6 +230,8 @@ class MonitorRuntime:
         if peer is None or age is None or age > 3 or now - self._last_sent < .25:
             return
         line = state['serial_line']
+        if self._stream.servo_present:
+            line += f" AKTUATOR={state['servo']['command']} BOOT={self._stream.boot} SEQ={(self._stream.expected - 1) & 0xffffffff}"
         try:
             self._socket.sendto(('SGR1 ' + line).encode('ascii', errors='replace')[:512], peer)
             self._last_sent = now
@@ -228,12 +258,16 @@ class MonitorRuntime:
     def _publish_audio(self, window, result, now=None):
         now = time.monotonic() if now is None else now
         with self._lock:
+            max_age = getattr(self._classifier, 'max_result_age_sec', 1.5)
             if (self._transport_error is not None or window.generation != self._stream.generation
-                    or now - window.received_at > 1.5):
+                    or now - window.received_at > max_age):
                 return False
             self._audio = result
             self._audio_generation = window.generation
-            self._audio_at = window.received_at
+            # Freshness after publication is distinct from the age of the input
+            # window. AST inference takes seconds, so using received_at here
+            # would make every valid result stale the instant it is published.
+            self._audio_at = now
             return True
 
     def get_jpeg(self):
