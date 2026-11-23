@@ -2,6 +2,7 @@
 import importlib
 import socket
 import struct
+import sys
 import threading
 import time
 import unittest
@@ -175,6 +176,82 @@ class RuntimeTests(unittest.TestCase):
                 fail_receive.set()
                 release_inference.set()
                 runtime.stop()
+
+    def test_udp_reset_from_refused_reply_keeps_receiver_alive(self):
+        from smart_gate_full.backend.runtime import MonitorRuntime
+        runtime = MonitorRuntime()
+        reset = ConnectionResetError(10054, 'reply port closed')
+        script = [reset, reset, (packet(0), ('127.0.0.1', 12345)), reset]
+
+        def receive(size):
+            if script:
+                item = script.pop(0)
+                if isinstance(item, BaseException):
+                    raise item
+                return item
+            time.sleep(.01)
+            raise socket.timeout()
+
+        def refused(state):
+            return [e for e in state['events'] if 'ditolak' in e['message']]
+
+        sock = Mock()
+        sock.getsockname.return_value = ('127.0.0.1', 5006)
+        sock.recvfrom.side_effect = receive
+        with patch('smart_gate_full.backend.runtime.socket.socket', return_value=sock):
+            try:
+                runtime.start(camera_enabled=False, udp_host='127.0.0.1', udp_port=0, classifier=object())
+                deadline = time.monotonic() + 2
+                state = runtime.snapshot()
+                while time.monotonic() < deadline and (script or len(refused(state)) < 2):
+                    time.sleep(.01)
+                    state = runtime.snapshot()
+                receiver = next(t for t in runtime._threads if t.name == 'audio-network')
+                self.assertTrue(receiver.is_alive(), state['audio'])
+                self.assertNotEqual(state['audio']['status'], 'error', state['audio'])
+                self.assertIsNone(state['audio']['error'])
+                self.assertEqual(state['transport']['packets'], 1)
+                # One notice per episode: the accepted packet re-arms it.
+                self.assertEqual(len(refused(state)), 2, state['events'])
+            finally:
+                runtime.stop()
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Reset UDP (WSAECONNRESET) hanya terjadi di Windows')
+    def test_closed_reply_port_on_windows_does_not_stop_audio(self):
+        from smart_gate_full.backend.runtime import MonitorRuntime
+        runtime = MonitorRuntime()
+        first = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        second = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for client in (first, second):
+            client.bind(('127.0.0.1', 0))
+            client.settimeout(2.)
+        try:
+            runtime.start(camera_enabled=False, udp_host='127.0.0.1', udp_port=0, classifier=object())
+            address = ('127.0.0.1', runtime.snapshot()['transport']['udp_port'])
+            first.sendto(packet(0), address)
+            self.assertTrue(first.recvfrom(512)[0].startswith(b'SGR1 '))
+            first.close()  # The next SGR1 reply now hits a closed port.
+            deadline = time.monotonic() + 2
+            state = runtime.snapshot()
+            while time.monotonic() < deadline and (
+                    not any('ditolak' in e['message'] for e in state['events'])
+                    or state['transport']['seconds_since_packet'] <= .35):
+                time.sleep(.01)
+                state = runtime.snapshot()
+            self.assertIsNone(state['audio']['error'], state['audio'])
+            self.assertTrue(any('ditolak' in e['message'] for e in state['events']), state['events'])
+            second.sendto(packet(0, boot=2), address)
+            raw, sender = second.recvfrom(512)
+            self.assertTrue(raw.startswith(b'SGR1 '))
+            self.assertEqual(sender, address)
+            state = runtime.snapshot()
+            self.assertEqual(state['transport']['packets'], 2)
+            self.assertIsNone(state['audio']['error'], state['audio'])
+            self.assertTrue(next(t for t in runtime._threads if t.name == 'audio-network').is_alive())
+        finally:
+            first.close()
+            second.close()
+            runtime.stop()
 
     def test_stale_window_cannot_publish_as_fresh(self):
         from smart_gate_full.backend.runtime import MonitorRuntime

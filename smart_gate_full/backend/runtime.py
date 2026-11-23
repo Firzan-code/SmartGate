@@ -53,6 +53,7 @@ class MonitorRuntime:
         self._camera_enabled = False
         self._last_sent = 0.
         self._last_line = None
+        self._reply_refused = False
         self._event('Server siap; menunggu audio MAX9814 dari ESP32-S3')
 
     def _event(self, text):
@@ -197,6 +198,8 @@ class MonitorRuntime:
                 with self._lock:
                     previous = self._stream.packets
                     window = self._stream.push(packet, peer, now)
+                    if self._stream.packets > previous:
+                        self._reply_refused = False
                     if self._stream.packets > previous and packet.servo_present:
                         servo_event = (packet.boot_id, packet.servo_state)
                         if servo_event != getattr(self, '_last_servo_event', None):
@@ -215,6 +218,12 @@ class MonitorRuntime:
                         self._pending.put_nowait(window)
             except socket.timeout:
                 pass
+            except ConnectionResetError:
+                # Windows surfaces ICMP port-unreachable from an earlier SGR1 reply here; the socket still works.
+                with self._lock:
+                    if not self._reply_refused:
+                        self._reply_refused = True
+                        self._event('Balasan SGR1 ditolak, port UDP ESP tertutup; penerimaan audio tetap berjalan')
             except OSError as exc:
                 if not self._stop.is_set():
                     self._audio_error(f'UDP gagal: {exc}', terminal=True)
