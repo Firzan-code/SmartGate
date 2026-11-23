@@ -1,0 +1,6 @@
+{
+  "samples": 16,
+  "max_prob_diff_fp16_vs_fp32": 0.001272175756548366,
+  "argmax_agreement": 1.0,
+  "source": "cache"
+}

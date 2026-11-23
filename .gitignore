@@ -17,7 +17,6 @@ config.local.*
 
 # Model Google diambil dengan scripts/download_models.py
 ml_engine/models/face_landmarker.task
-ml_engine/models/siren_ast_v2/
 
 # Data pribadi dan hasil uji bukan source code
 ml_engine/dataset/

@@ -62,12 +62,12 @@ Jalankan `scripts/download_models.py`; file diunduh ke lokasi yang diharapkan ko
 
 ## Asal model sirene AST
 
-- Sumber: [Release GitHub `model-siren-ast-v2-20261122`](https://github.com/Firzan-code/SmartGate/releases/tag/model-siren-ast-v2-20261122), lima file isi folder `siren_ast_v2`.
+- Sumber: folder `ml_engine/models/siren_ast_v2` di repo (file ONNX lewat Git LFS), dengan salinan yang sama di [Release GitHub `model-siren-ast-v2-20261122`](https://github.com/Firzan-code/SmartGate/releases/tag/model-siren-ast-v2-20261122).
 - Model dasar: `MIT/ast-finetuned-audioset-10-10-0.4593`; artefak dibuat 2026-11-22 16:21 UTC.
 - File utama `siren_ast_fp16.onnx`: 171.407.125 byte, SHA256 `4bac249112a43a7ebb91d9eba4dfe088209cc69dc76876d662405a6a0e134c21`.
 - Ukuran dan SHA256 keempat file JSON tercatat di `scripts/download_models.py` dan di halaman release.
 
-`scripts/download_models.py` mengunduh kelima file tersebut ke `ml_engine/models/siren_ast_v2` dan menolak file yang ukuran atau checksum-nya berbeda. Model ini tidak dimasukkan Git karena file ONNX melebihi batas 100 MB per file GitHub.
+File ONNX melebihi batas 100 MB per file GitHub, jadi disimpan lewat Git LFS; `git pull` mengambil file aslinya bila Git LFS terpasang. `scripts/download_models.py` memeriksa kelima file, mengunduh yang belum ada dari release, dan menolak file yang ukuran atau checksum-nya berbeda.
 
 ## Keamanan artifact model
 

@@ -1,0 +1,14 @@
+{
+  "id2label": {
+    "0": "ambulance",
+    "1": "other_siren",
+    "2": "traffic_noise"
+  },
+  "label2id": {
+    "ambulance": 0,
+    "other_siren": 1,
+    "traffic_noise": 2
+  },
+  "target_sr": 16000,
+  "clip_duration": 3.0
+}

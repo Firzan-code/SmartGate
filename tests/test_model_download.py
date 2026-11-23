@@ -103,6 +103,26 @@ class ModelDownloadTests(unittest.TestCase):
             self.assertEqual(list(directory.iterdir()), [])
             self.assertEqual(response.consumed, 6)
 
+    def test_lfs_pointer_gets_actionable_message_and_is_kept(self):
+        module = self.module()
+        pointer = b'version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 171407125\n'
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / 'siren_ast_v2'
+            directory.mkdir()
+            (directory / 'model.onnx').write_bytes(pointer)
+            with patch.object(module, 'AST_FILES', {'model.onnx': (5, hashlib.sha256(b'right').hexdigest())}), \
+                 patch.object(module, 'urlopen') as request:
+                with self.assertRaisesRegex(ValueError, 'git lfs pull'):
+                    module.fetch_ast_model(directory)
+                request.assert_not_called()
+            self.assertEqual((directory / 'model.onnx').read_bytes(), pointer)
+
+    def test_ast_model_is_tracked_with_lfs_not_ignored(self):
+        attributes = (ROOT / '.gitattributes').read_text(encoding='utf-8')
+        self.assertIn('ml_engine/models/siren_ast_v2/*.onnx filter=lfs diff=lfs merge=lfs -text', attributes)
+        ignored = [line.strip() for line in (ROOT / '.gitignore').read_text(encoding='utf-8').splitlines()]
+        self.assertNotIn('ml_engine/models/siren_ast_v2/', ignored)
+
     def test_pinned_ast_files_cover_runtime_requirements(self):
         module = self.module()
         self.assertTrue({'siren_ast_fp16.onnx', 'labels.json', 'preprocessor_config.json'} <= set(module.AST_FILES))

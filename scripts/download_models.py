@@ -11,7 +11,7 @@ EXPECTED_SHA256 = '64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc
 EXPECTED_SIZE = 3758596
 DEFAULT_DESTINATION = ROOT / 'ml_engine/models/face_landmarker.task'
 
-# The ONNX file exceeds GitHub's 100 MB per-file limit, so it ships as a release asset.
+# Fallback for clones without Git LFS; the repo stores the ONNX as an LFS object.
 AST_RELEASE_URL = 'https://github.com/Firzan-code/SmartGate/releases/download/model-siren-ast-v2-20261122/'
 AST_FILES = {
     'siren_ast_fp16.onnx': (171407125, '4bac249112a43a7ebb91d9eba4dfe088209cc69dc76876d662405a6a0e134c21'),
@@ -22,6 +22,14 @@ AST_FILES = {
 }
 DEFAULT_AST_DIR = ROOT / 'ml_engine/models/siren_ast_v2'
 CHUNK = 1 << 20
+LFS_POINTER = b'version https://git-lfs.github.com/spec/v1'
+
+
+def _is_lfs_pointer(path):
+    if path.stat().st_size > 1024:
+        return False
+    with path.open('rb') as handle:
+        return handle.read(len(LFS_POINTER)) == LFS_POINTER
 
 
 def _matches(path, size, sha256):
@@ -39,6 +47,9 @@ def _fetch(url, size, sha256, destination):
     if destination.is_file():
         if _matches(destination, size, sha256):
             return destination
+        if _is_lfs_pointer(destination):
+            raise ValueError(f'{destination.name} masih pointer Git LFS; jalankan `git lfs install` lalu '
+                             '`git lfs pull`, atau hapus file itu agar diunduh dari release.')
         raise ValueError(f'Model lokal berbeda checksum ({destination.name}); '
                          'pindahkan file tersebut sebelum mengunduh ulang.')
     destination.parent.mkdir(parents=True, exist_ok=True)

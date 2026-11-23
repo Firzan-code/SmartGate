@@ -10,3 +10,4 @@
 *.cmd text eol=crlf
 *.pkl binary
 *.task binary
+ml_engine/models/siren_ast_v2/*.onnx filter=lfs diff=lfs merge=lfs -text
