@@ -112,7 +112,7 @@ py -3.11 -m venv .venv
 .venv\Scripts\python.exe scripts\download_models.py
 ```
 
-Letakkan folder model `siren_ast_v2` di `ml_engine/models/siren_ast_v2`, atau arahkan variabel lingkungan `SMARTGATE_AST_MODEL_DIR` ke folder tersebut. Artefak utama bernama `siren_ast_fp16.onnx`; tidak perlu training ulang untuk menjalankan demo. Model wajah diunduh dari Google melalui skrip resmi proyek dengan pemeriksaan ukuran dan SHA256. Unduhan model dan instalasi pertama memerlukan Internet; kamera tidak dikirim ke Google.
+Skrip `download_models.py` mengunduh dua model dan memeriksa ukuran serta SHA256 setiap file: model wajah MediaPipe dari Google, dan model sirene AST `siren_ast_v2` (sekitar 171 MB) dari [Release GitHub proyek](https://github.com/Firzan-code/SmartGate/releases/tag/model-siren-ast-v2-20261122) ke `ml_engine/models/siren_ast_v2`. Model AST tidak disimpan di Git karena `siren_ast_fp16.onnx` melebihi batas 100 MB per file GitHub. Untuk memakai folder model AST lain, arahkan variabel lingkungan `SMARTGATE_AST_MODEL_DIR` ke folder tersebut. Tidak perlu training ulang untuk menjalankan demo. Unduhan model dan instalasi pertama memerlukan Internet; kamera tidak dikirim ke Google.
 
 Jika `py -3.11` tidak ditemukan, pasang Python 3.11 terlebih dahulu. Gunakan `python -m pip` dari interpreter yang sama, jangan `pip` yang mungkin milik Python lain.
 
@@ -182,7 +182,7 @@ SmartGate/
 ├── JALANKAN_DUA_MODEL.cmd            # Shortcut Windows, memakai .venv
 ├── requirements.txt                 # Dependensi demo
 ├── scripts/
-│   ├── download_models.py           # Unduh model wajah + cek checksum
+│   ├── download_models.py           # Unduh model wajah + AST, cek checksum
 │   └── test_firmware_host.py        # Simulasi firmware tanpa ESP
 ├── ml_engine/
 │   ├── vision_ear.py                # MediaPipe dan overlay

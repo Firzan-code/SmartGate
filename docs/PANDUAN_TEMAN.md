@@ -79,6 +79,7 @@ Rincian dan titik berhenti ketika gagal: [uji fisik](UJI_FISIK.md).
 |---|---|
 | `ModuleNotFoundError` | Jalankan dari `.venv\Scripts\python.exe`; pasang `requirements.txt` di interpreter yang sama. |
 | Model wajah tidak ditemukan | Jalankan `scripts\download_models.py` dari root repo. |
+| `Model AST tidak lengkap` | Jalankan `scripts\download_models.py` dari root repo; skrip mengunduh model sirene dari Release GitHub. |
 | Model RF hilang | Ambil kembali file model dari repo yang dipercaya; dashboard tidak otomatis training ulang. |
 | Kamera tidak tampil | Tutup aplikasi lain yang memakai webcam, cek izin Windows, indeks kamera dan backend. |
 | Paket audio selalu nol | Firmware yang terpasang, SSID/IP laptop, UDP5006, izin jaringan privat dan client isolation hotspot. |
